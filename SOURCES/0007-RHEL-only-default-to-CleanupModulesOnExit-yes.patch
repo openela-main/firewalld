@@ -1,0 +1,95 @@
+From 82b49bd47d0073f2c2bc4bd296c1a52e4d4d3732 Mon Sep 17 00:00:00 2001
+From: Eric Garver <egarver@redhat.com>
+Date: Mon, 20 Dec 2021 13:56:55 -0500
+Subject: [PATCH 07/10] RHEL only: default to CleanupModulesOnExit=yes
+
+Resolves: rhbz1980206
+---
+ config/firewalld.conf              | 4 ++--
+ doc/xml/firewalld.conf.xml         | 4 ++--
+ src/firewall/config/__init__.py.in | 2 +-
+ src/firewall/core/fw.py            | 2 ++
+ src/tests/dbus/firewalld.conf.at   | 4 ++--
+ 5 files changed, 9 insertions(+), 7 deletions(-)
+
+diff --git a/config/firewalld.conf b/config/firewalld.conf
+index 3abbc9c998c1..c387f87c28be 100644
+--- a/config/firewalld.conf
++++ b/config/firewalld.conf
+@@ -15,8 +15,8 @@ CleanupOnExit=yes
+ # If set to yes or true the firewall related kernel modules will be
+ # unloaded on exit or stop of firewalld. This might attempt to unload
+ # modules not originally loaded by firewalld.
+-# Default: no
+-CleanupModulesOnExit=no
++# Default: yes
++CleanupModulesOnExit=yes
+ 
+ # Lockdown
+ # If set to enabled, firewall changes with the D-Bus interface will be limited
+diff --git a/doc/xml/firewalld.conf.xml b/doc/xml/firewalld.conf.xml
+index 3ae531bcd94a..c94073dbf84f 100644
+--- a/doc/xml/firewalld.conf.xml
++++ b/doc/xml/firewalld.conf.xml
+@@ -93,8 +93,8 @@
+         <listitem>
+           <para>
+             Setting this option to yes or true unloads all firewall-related
+-            kernel modules when firewalld is stopped. The default value is no
+-            or false.
++            kernel modules when firewalld is stopped. The default value is yes
++            or true.
+           </para>
+         </listitem>
+       </varlistentry>
+diff --git a/src/firewall/config/__init__.py.in b/src/firewall/config/__init__.py.in
+index 5d6d769fbf15..285e2f034b6b 100644
+--- a/src/firewall/config/__init__.py.in
++++ b/src/firewall/config/__init__.py.in
+@@ -125,7 +125,7 @@ FIREWALL_BACKEND_VALUES = [ "nftables", "iptables" ]
+ FALLBACK_ZONE = "public"
+ FALLBACK_MINIMAL_MARK = 100
+ FALLBACK_CLEANUP_ON_EXIT = True
+-FALLBACK_CLEANUP_MODULES_ON_EXIT = False
++FALLBACK_CLEANUP_MODULES_ON_EXIT = True
+ FALLBACK_LOCKDOWN = False
+ FALLBACK_IPV6_RPFILTER = True
+ FALLBACK_INDIVIDUAL_CALLS = False
+diff --git a/src/firewall/core/fw.py b/src/firewall/core/fw.py
+index 4171697bdb94..5cef18b5f889 100644
+--- a/src/firewall/core/fw.py
++++ b/src/firewall/core/fw.py
+@@ -238,6 +238,8 @@ class Firewall(object):
+                 value = self._firewalld_conf.get("CleanupModulesOnExit")
+                 if value is not None and value.lower() in [ "yes", "true" ]:
+                     self.cleanup_modules_on_exit = True
++                if value is not None and value.lower() in [ "no", "false" ]:
++                    self.cleanup_modules_on_exit = False
+                 log.debug1("CleanupModulesOnExit is set to '%s'",
+                            self.cleanup_modules_on_exit)
+ 
+diff --git a/src/tests/dbus/firewalld.conf.at b/src/tests/dbus/firewalld.conf.at
+index 9a04a3bd491c..68832bca33bc 100644
+--- a/src/tests/dbus/firewalld.conf.at
++++ b/src/tests/dbus/firewalld.conf.at
+@@ -17,7 +17,7 @@ dnl Verify defaults over dbus. Should be inline with default firewalld.conf.
+ DBUS_GETALL([config], [config], 0, [dnl
+ string "AllowZoneDrifting" : variant string "no"
+ string "AutomaticHelpers" : variant string "no"
+-string "CleanupModulesOnExit" : variant string "no"
++string "CleanupModulesOnExit" : variant string "yes"
+ string "CleanupOnExit" : variant string "no"
+ string "DefaultZone" : variant string "public"
+ string "FirewallBackend" : variant string "nftables"
+@@ -46,7 +46,7 @@ _helper([IPv6_rpfilter], [string:"yes"], [variant string "yes"])
+ _helper([IndividualCalls], [string:"yes"], [variant string "yes"])
+ _helper([FirewallBackend], [string:"iptables"], [variant string "iptables"])
+ _helper([FlushAllOnReload], [string:"no"], [variant string "no"])
+-_helper([CleanupModulesOnExit], [string:"yes"], [variant string "yes"])
++_helper([CleanupModulesOnExit], [string:"no"], [variant string "no"])
+ _helper([CleanupOnExit], [string:"yes"], [variant string "yes"])
+ _helper([RFC3964_IPv4], [string:"no"], [variant string "no"])
+ _helper([AllowZoneDrifting], [string:"yes"], [variant string "yes"])
+-- 
+2.39.1
+

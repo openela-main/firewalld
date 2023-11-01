@@ -1,0 +1,80 @@
+From 6b88f757186f0b6479c2a334c0c0362a2ba05570 Mon Sep 17 00:00:00 2001
+From: Eric Garver <eric@garver.life>
+Date: Tue, 4 Feb 2020 09:12:17 -0500
+Subject: [PATCH 02/10] RHEL only: default to AllowZoneDrifting=yes
+
+---
+ config/firewalld.conf              | 4 ++--
+ doc/xml/firewalld.conf.xml         | 2 +-
+ doc/xml/firewalld.dbus.xml         | 2 +-
+ src/firewall/config/__init__.py.in | 2 +-
+ src/tests/functions.at             | 5 +++++
+ 5 files changed, 10 insertions(+), 5 deletions(-)
+
+diff --git a/config/firewalld.conf b/config/firewalld.conf
+index 99d573dcf06f..a0556c0bbf5b 100644
+--- a/config/firewalld.conf
++++ b/config/firewalld.conf
+@@ -73,5 +73,5 @@ RFC3964_IPv4=yes
+ # Note: If "yes" packets will only drift from source based zones to interface
+ # based zones (including the default zone). Packets never drift from interface
+ # based zones to other interfaces based zones (including the default zone).
+-# Possible values; "yes", "no". Defaults to "no".
+-AllowZoneDrifting=no
++# Possible values; "yes", "no". Defaults to "yes".
++AllowZoneDrifting=yes
+diff --git a/doc/xml/firewalld.conf.xml b/doc/xml/firewalld.conf.xml
+index 8155c547a216..0a6e8f2fdebf 100644
+--- a/doc/xml/firewalld.conf.xml
++++ b/doc/xml/firewalld.conf.xml
+@@ -206,7 +206,7 @@
+                 to interface based zones (including the default zone). Packets
+                 never drift from interface based zones to other interfaces
+                 based zones (including the default zone).
+-                Valid values; "yes", "no". Defaults to "no".
++                Valid values; "yes", "no". Defaults to "yes".
+                 </para>
+             </listitem>
+         </varlistentry>
+diff --git a/doc/xml/firewalld.dbus.xml b/doc/xml/firewalld.dbus.xml
+index da442f3f41b9..1c33ad5ee918 100644
+--- a/doc/xml/firewalld.dbus.xml
++++ b/doc/xml/firewalld.dbus.xml
+@@ -2787,7 +2787,7 @@
+                 to interface based zones (including the default zone). Packets
+                 never drift from interface based zones to other interfaces
+                 based zones (including the default zone).
+-                Valid values; "yes", "no". Defaults to "no".
++                Valid values; "yes", "no". Defaults to "yes".
+             </para></listitem>
+           </varlistentry>
+           <varlistentry id="FirewallD1.config.Properties.AutomaticHelpers">
+diff --git a/src/firewall/config/__init__.py.in b/src/firewall/config/__init__.py.in
+index e875e849dec1..0dec7913f694 100644
+--- a/src/firewall/config/__init__.py.in
++++ b/src/firewall/config/__init__.py.in
+@@ -133,4 +133,4 @@ FALLBACK_AUTOMATIC_HELPERS = "no"
+ FALLBACK_FIREWALL_BACKEND = "nftables"
+ FALLBACK_FLUSH_ALL_ON_RELOAD = True
+ FALLBACK_RFC3964_IPV4 = True
+-FALLBACK_ALLOW_ZONE_DRIFTING = False
++FALLBACK_ALLOW_ZONE_DRIFTING = True
+diff --git a/src/tests/functions.at b/src/tests/functions.at
+index 2f8183966760..a2989c6345da 100644
+--- a/src/tests/functions.at
++++ b/src/tests/functions.at
+@@ -126,6 +126,11 @@ m4_define([FWD_START_TEST], [
+         dnl set the appropriate backend
+         AT_CHECK([sed -i 's/^FirewallBackend.*/FirewallBackend=FIREWALL_BACKEND/' ./firewalld.conf])
+ 
++        dnl Expected test results assume this is set to "no", but downstream
++        dnl RHEL overrides it to "yes". Override it back to "no" so we don't
++        dnl have to fix up all the tests when bringing them from upstream.
++        AT_CHECK([sed -i 's/^AllowZoneDrifting.*/AllowZoneDrifting=no/' ./firewalld.conf])
++
+         dnl fib matching is pretty new in nftables. Don't use rpfilter on older
+         dnl kernels.
+         m4_if(nftables, FIREWALL_BACKEND, [
+-- 
+2.39.1
+

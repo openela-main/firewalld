@@ -1,0 +1,141 @@
+From ae057df0222e6e1dd1556436fad93b669da8f653 Mon Sep 17 00:00:00 2001
+From: Eric Garver <eric@garver.life>
+Date: Tue, 30 Nov 2021 14:54:20 -0500
+Subject: [PATCH 08/10] v1.1.0: fix(ipset): reduce cost of entry overlap
+ detection
+
+This increases peak memory usage to reduce the duration it takes to
+apply the set entries. Building the list of IPv4Network objects up front
+means we don't have to build them multiple times inside the for loop.
+
+Fixes: #881
+(cherry picked from commit 7f5b736378c0133f46470c42e0c1fb3b95087de5)
+---
+ src/firewall/client.py              | 10 ++++------
+ src/firewall/core/fw_ipset.py       |  9 +++------
+ src/firewall/core/ipset.py          | 27 ++++++++++++++++++++++-----
+ src/firewall/server/config_ipset.py | 10 ++++------
+ 4 files changed, 33 insertions(+), 23 deletions(-)
+
+diff --git a/src/firewall/client.py b/src/firewall/client.py
+index 3715ffd29316..fdc88ac7946b 100644
+--- a/src/firewall/client.py
++++ b/src/firewall/client.py
+@@ -34,7 +34,8 @@ from firewall.core.base import DEFAULT_ZONE_TARGET, DEFAULT_POLICY_TARGET, DEFAU
+ from firewall.dbus_utils import dbus_to_python
+ from firewall.functions import b2u
+ from firewall.core.rich import Rich_Rule
+-from firewall.core.ipset import normalize_ipset_entry, check_entry_overlaps_existing
++from firewall.core.ipset import normalize_ipset_entry, check_entry_overlaps_existing, \
++                                check_for_overlapping_entries
+ from firewall import errors
+ from firewall.errors import FirewallError
+ 
+@@ -1617,11 +1618,8 @@ class FirewallClientIPSetSettings(object):
+         if "timeout" in self.settings[4] and \
+            self.settings[4]["timeout"] != "0":
+             raise FirewallError(errors.IPSET_WITH_TIMEOUT)
+-        _entries = set()
+-        for _entry in dbus_to_python(entries, list):
+-            check_entry_overlaps_existing(_entry, _entries)
+-            _entries.add(normalize_ipset_entry(_entry))
+-        self.settings[5] = list(_entries)
++        check_for_overlapping_entries(entries)
++        self.settings[5] = entries
+     @handle_exceptions
+     def addEntry(self, entry):
+         if "timeout" in self.settings[4] and \
+diff --git a/src/firewall/core/fw_ipset.py b/src/firewall/core/fw_ipset.py
+index 711c86a062be..d4bf99eaadcc 100644
+--- a/src/firewall/core/fw_ipset.py
++++ b/src/firewall/core/fw_ipset.py
+@@ -25,7 +25,8 @@ __all__ = [ "FirewallIPSet" ]
+ 
+ from firewall.core.logger import log
+ from firewall.core.ipset import remove_default_create_options as rm_def_cr_opts, \
+-                                normalize_ipset_entry, check_entry_overlaps_existing
++                                normalize_ipset_entry, check_entry_overlaps_existing, \
++                                check_for_overlapping_entries
+ from firewall.core.io.ipset import IPSet
+ from firewall import errors
+ from firewall.errors import FirewallError
+@@ -242,11 +243,7 @@ class FirewallIPSet(object):
+     def set_entries(self, name, entries):
+         obj = self.get_ipset(name, applied=True)
+ 
+-        _entries = set()
+-        for _entry in entries:
+-            check_entry_overlaps_existing(_entry, _entries)
+-            _entries.add(normalize_ipset_entry(_entry))
+-        entries = list(_entries)
++        check_for_overlapping_entries(entries)
+ 
+         for entry in entries:
+             IPSet.check_entry(entry, obj.options, obj.type)
+diff --git a/src/firewall/core/ipset.py b/src/firewall/core/ipset.py
+index d6defa395241..66ea4335536d 100644
+--- a/src/firewall/core/ipset.py
++++ b/src/firewall/core/ipset.py
+@@ -309,9 +309,26 @@ def check_entry_overlaps_existing(entry, entries):
+     if len(entry.split(",")) > 1:
+         return
+ 
++    try:
++        entry_network = ipaddress.ip_network(entry, strict=False)
++    except ValueError:
++        # could not parse the new IP address, maybe a MAC
++        return
++
+     for itr in entries:
+-        try:
+-            if ipaddress.ip_network(itr, strict=False).overlaps(ipaddress.ip_network(entry, strict=False)):
+-                raise FirewallError(errors.INVALID_ENTRY, "Entry '{}' overlaps with existing entry '{}'".format(itr, entry))
+-        except ValueError:
+-            pass
++        if entry_network.overlaps(ipaddress.ip_network(itr, strict=False)):
++            raise FirewallError(errors.INVALID_ENTRY, "Entry '{}' overlaps with existing entry '{}'".format(entry, itr))
++
++def check_for_overlapping_entries(entries):
++    """ Check if any entry overlaps any entry in the list of entries """
++    try:
++        entries = [ipaddress.ip_network(x, strict=False) for x in entries]
++    except ValueError:
++        # at least one entry can not be parsed
++        return
++
++    while entries:
++        entry = entries.pop()
++        for itr in entries:
++            if entry.overlaps(itr):
++                raise FirewallError(errors.INVALID_ENTRY, "Entry '{}' overlaps entry '{}'".format(entry, itr))
+diff --git a/src/firewall/server/config_ipset.py b/src/firewall/server/config_ipset.py
+index f33c2a02926f..499ffcb9227a 100644
+--- a/src/firewall/server/config_ipset.py
++++ b/src/firewall/server/config_ipset.py
+@@ -34,7 +34,8 @@ from firewall.dbus_utils import dbus_to_python, \
+     dbus_introspection_add_properties
+ from firewall.core.io.ipset import IPSet
+ from firewall.core.ipset import IPSET_TYPES, normalize_ipset_entry, \
+-                                check_entry_overlaps_existing
++                                check_entry_overlaps_existing, \
++                                check_for_overlapping_entries
+ from firewall.core.logger import log
+ from firewall.server.decorators import handle_exceptions, \
+     dbus_handle_exceptions, dbus_service_method
+@@ -407,11 +408,8 @@ class FirewallDConfigIPSet(slip.dbus.service.Object):
+                          in_signature='as')
+     @dbus_handle_exceptions
+     def setEntries(self, entries, sender=None):
+-        _entries = set()
+-        for _entry in dbus_to_python(entries, list):
+-            check_entry_overlaps_existing(_entry, _entries)
+-            _entries.add(normalize_ipset_entry(_entry))
+-        entries = list(_entries)
++        entries = dbus_to_python(entries, list)
++        check_for_overlapping_entries(entries)
+         log.debug1("%s.setEntries('[%s]')", self._log_prefix,
+                    ",".join(entries))
+         self.parent.accessCheck(sender)
+-- 
+2.39.1
+
