@@ -1,0 +1,56 @@
+From 885d308c1457e9ea0d839d852dd98a1c134b448c Mon Sep 17 00:00:00 2001
+From: Eric Garver <eric@garver.life>
+Date: Tue, 30 Nov 2021 14:50:17 -0500
+Subject: [PATCH 09/10] v1.1.0: test(ipset): huge set of entries benchmark
+
+Coverage: #881
+(cherry picked from commit 114936c71ab1b12a5598d06805b7e9e13f7ee190)
+---
+ src/tests/regression/gh881.at      | 25 +++++++++++++++++++++++++
+ src/tests/regression/regression.at |  1 +
+ 2 files changed, 26 insertions(+)
+ create mode 100644 src/tests/regression/gh881.at
+
+diff --git a/src/tests/regression/gh881.at b/src/tests/regression/gh881.at
+new file mode 100644
+index 000000000000..c7326805b555
+--- /dev/null
++++ b/src/tests/regression/gh881.at
+@@ -0,0 +1,25 @@
++FWD_START_TEST([ipset entry overlap detect perf])
++AT_KEYWORDS(ipset gh881)
++
++dnl build a large ipset
++dnl
++AT_DATA([./deny_cidr], [])
++NS_CHECK([sh -c '
++for I in $(seq 10); do
++  for J in $(seq 250); do
++    echo "10.${I}.${J}.0/24" >> ./deny_cidr
++  done
++done
++'])
++
++dnl verify non-overlapping does not error
++dnl
++FWD_CHECK([--permanent --new-ipset=deny_set --type=hash:net --option=family=inet --option=hashsize=16384 --option=maxelem=20000], 0, [ignore])
++NS_CHECK([time timeout 300 firewall-cmd --permanent --ipset=deny_set --add-entries-from-file=./deny_cidr], 0, [ignore], [ignore])
++
++dnl verify overlap detection actually detects an overlap
++dnl
++NS_CHECK([echo "10.1.0.0/16" >> ./deny_cidr])
++NS_CHECK([time timeout 300 firewall-cmd --permanent --ipset=deny_set --add-entries-from-file=./deny_cidr], 136, [ignore], [ignore])
++
++FWD_END_TEST()
+diff --git a/src/tests/regression/regression.at b/src/tests/regression/regression.at
+index 104f784cbe93..143298d3235f 100644
+--- a/src/tests/regression/regression.at
++++ b/src/tests/regression/regression.at
+@@ -50,3 +50,4 @@ m4_include([regression/gh874.at])
+ m4_include([regression/service_includes_for_builtin.at])
+ m4_include([regression/rhbz2181406.at])
+ m4_include([regression/ipset_scale.at])
++m4_include([regression/gh881.at])
+-- 
+2.39.1
+

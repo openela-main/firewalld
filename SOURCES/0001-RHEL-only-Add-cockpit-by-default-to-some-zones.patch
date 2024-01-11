@@ -1,0 +1,94 @@
+From feb06c3d50c737183c08fd05592d5c9209f4b966 Mon Sep 17 00:00:00 2001
+From: Eric Garver <e@erig.me>
+Date: Mon, 9 Jul 2018 11:29:33 -0400
+Subject: [PATCH 01/10] RHEL only: Add cockpit by default to some zones
+
+Fixes: #1581578
+---
+ config/zones/home.xml     |  1 +
+ config/zones/internal.xml |  1 +
+ config/zones/public.xml   |  1 +
+ config/zones/work.xml     |  1 +
+ src/tests/functions.at    | 19 +++++++++++++++++++
+ 5 files changed, 23 insertions(+)
+
+diff --git a/config/zones/home.xml b/config/zones/home.xml
+index 42b29b2f2d50..8aa8afa0e8aa 100644
+--- a/config/zones/home.xml
++++ b/config/zones/home.xml
+@@ -6,4 +6,5 @@
+   <service name="mdns"/>
+   <service name="samba-client"/>
+   <service name="dhcpv6-client"/>
++  <service name="cockpit"/>
+ </zone>
+diff --git a/config/zones/internal.xml b/config/zones/internal.xml
+index e646b48c94e8..40cb7e14424b 100644
+--- a/config/zones/internal.xml
++++ b/config/zones/internal.xml
+@@ -6,4 +6,5 @@
+   <service name="mdns"/>
+   <service name="samba-client"/>
+   <service name="dhcpv6-client"/>
++  <service name="cockpit"/>
+ </zone>
+diff --git a/config/zones/public.xml b/config/zones/public.xml
+index 49795d8c9068..617e131a4895 100644
+--- a/config/zones/public.xml
++++ b/config/zones/public.xml
+@@ -4,4 +4,5 @@
+   <description>For use in public areas. You do not trust the other computers on networks to not harm your computer. Only selected incoming connections are accepted.</description>
+   <service name="ssh"/>
+   <service name="dhcpv6-client"/>
++  <service name="cockpit"/>
+ </zone>
+diff --git a/config/zones/work.xml b/config/zones/work.xml
+index 6ea5550a40bd..9609ee6f65c2 100644
+--- a/config/zones/work.xml
++++ b/config/zones/work.xml
+@@ -4,4 +4,5 @@
+   <description>For use in work areas. You mostly trust the other computers on networks to not harm your computer. Only selected incoming connections are accepted.</description>
+   <service name="ssh"/>
+   <service name="dhcpv6-client"/>
++  <service name="cockpit"/>
+ </zone>
+diff --git a/src/tests/functions.at b/src/tests/functions.at
+index 72db26d5ce0c..2f8183966760 100644
+--- a/src/tests/functions.at
++++ b/src/tests/functions.at
+@@ -112,6 +112,13 @@ m4_define([FWD_START_TEST], [
+     fi
+ 
+     m4_ifdef([TESTING_FIREWALL_OFFLINE_CMD], [
++        dnl cockpit is added by default downstream, but upstream tests don't expect
++        dnl it. Simply remove it at the start of every test.
++        dnl
++        FWD_OFFLINE_CHECK([--zone home --remove-service-from-zone cockpit], 0, [ignore])
++        FWD_OFFLINE_CHECK([--zone internal --remove-service-from-zone cockpit], 0, [ignore])
++        FWD_OFFLINE_CHECK([--zone public --remove-service-from-zone cockpit], 0, [ignore])
++        FWD_OFFLINE_CHECK([--zone work --remove-service-from-zone cockpit], 0, [ignore])
+     ], [
+         dnl don't unload modules or bother cleaning up, the namespace will be deleted
+         AT_CHECK([sed -i 's/^CleanupOnExit.*/CleanupOnExit=no/' ./firewalld.conf])
+@@ -229,6 +236,18 @@ m4_define([FWD_START_TEST], [
+         ])
+ 
+         FWD_START_FIREWALLD
++
++        dnl cockpit is added by default downstream, but upstream tests don't expect
++        dnl it. Simply remove it at the start of every test.
++        dnl
++        FWD_CHECK([--permanent --zone home --remove-service cockpit], 0, [ignore])
++        FWD_CHECK([            --zone home --remove-service cockpit], 0, [ignore])
++        FWD_CHECK([--permanent --zone internal --remove-service cockpit], 0, [ignore])
++        FWD_CHECK([            --zone internal --remove-service cockpit], 0, [ignore])
++        FWD_CHECK([--permanent --zone public --remove-service cockpit], 0, [ignore])
++        FWD_CHECK([            --zone public --remove-service cockpit], 0, [ignore])
++        FWD_CHECK([--permanent --zone work --remove-service cockpit], 0, [ignore])
++        FWD_CHECK([            --zone work --remove-service cockpit], 0, [ignore])
+     ])
+ ])
+ 
+-- 
+2.39.1
+

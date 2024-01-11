@@ -1,0 +1,56 @@
+From 17a69c4dd7feff3c6101b5541497b8304447ed40 Mon Sep 17 00:00:00 2001
+From: Vrinda Punj <vpunj@redhat.com>
+Date: Tue, 1 Dec 2020 11:58:19 -0500
+Subject: [PATCH 03/10] v1.0.0: feat(service): add galera service Fixes:
+ rhbz1696260
+
+(cherry picked from commit 11632147677464cb7121d17526ead242e68be041)
+---
+ config/Makefile.am         | 1 +
+ config/services/galera.xml | 9 +++++++++
+ po/POTFILES.in             | 1 +
+ 3 files changed, 11 insertions(+)
+ create mode 100644 config/services/galera.xml
+
+diff --git a/config/Makefile.am b/config/Makefile.am
+index fef3b55dc527..f844a5a00e2f 100644
+--- a/config/Makefile.am
++++ b/config/Makefile.am
+@@ -159,6 +159,7 @@ CONFIG_FILES = \
+ 	services/freeipa-replication.xml \
+ 	services/freeipa-trust.xml \
+ 	services/ftp.xml \
++	services/galera.xml \
+ 	services/ganglia-client.xml \
+ 	services/ganglia-master.xml \
+ 	services/git.xml \
+diff --git a/config/services/galera.xml b/config/services/galera.xml
+new file mode 100644
+index 000000000000..2305713fbcab
+--- /dev/null
++++ b/config/services/galera.xml
+@@ -0,0 +1,9 @@
++<?xml version="1.0" encoding="utf-8"?>
++<service>
++  <short>Galera</short>
++  <description>MariaDB-Galera Database Server</description>
++  <port protocol="tcp" port="3306"/>
++  <port protocol="tcp" port="4567"/>
++  <port protocol="tcp" port="4568"/>
++  <port protocol="tcp" port="4444"/>
++</service>
+diff --git a/po/POTFILES.in b/po/POTFILES.in
+index 666eb677855b..249cff8d0d2f 100644
+--- a/po/POTFILES.in
++++ b/po/POTFILES.in
+@@ -91,6 +91,7 @@ config/services/freeipa-ldap.xml
+ config/services/freeipa-replication.xml
+ config/services/freeipa-trust.xml
+ config/services/ftp.xml
++config/services/galera.xml
+ config/services/ganglia-client.xml
+ config/services/ganglia-master.xml
+ config/services/git.xml
+-- 
+2.39.1
+

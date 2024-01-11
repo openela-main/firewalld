@@ -1,0 +1,242 @@
+From 430dee713b69a32e5c5bf6b1f68a605564fe93ef Mon Sep 17 00:00:00 2001
+From: Eric Garver <eric@garver.life>
+Date: Fri, 12 Feb 2021 14:23:21 -0500
+Subject: [PATCH 04/10] v1.0.0: fix(ipset): normalize entries in CIDR notation
+
+This will convert things like 10.0.1.0/22 to 10.0.0.0/22. Fix up test
+cases in which the error code changed due to this.
+
+(cherry picked from commit e4dc44fcfd214b27c718eb4d99d3b137495b9626)
+---
+ src/firewall/client.py              |  9 ++++++++-
+ src/firewall/core/fw_ipset.py       | 11 ++++++++++-
+ src/firewall/core/ipset.py          | 13 +++++++++++++
+ src/firewall/server/config_ipset.py | 10 ++++++++--
+ src/tests/regression/rhbz1601610.at | 19 +++++++++++++------
+ 5 files changed, 52 insertions(+), 10 deletions(-)
+
+diff --git a/src/firewall/client.py b/src/firewall/client.py
+index 51bf09c8fad6..aa6bd7cd282b 100644
+--- a/src/firewall/client.py
++++ b/src/firewall/client.py
+@@ -34,6 +34,7 @@ from firewall.core.base import DEFAULT_ZONE_TARGET, DEFAULT_POLICY_TARGET, DEFAU
+ from firewall.dbus_utils import dbus_to_python
+ from firewall.functions import b2u
+ from firewall.core.rich import Rich_Rule
++from firewall.core.ipset import normalize_ipset_entry
+ from firewall import errors
+ from firewall.errors import FirewallError
+ 
+@@ -1616,12 +1617,16 @@ class FirewallClientIPSetSettings(object):
+         if "timeout" in self.settings[4] and \
+            self.settings[4]["timeout"] != "0":
+             raise FirewallError(errors.IPSET_WITH_TIMEOUT)
+-        self.settings[5] = entries
++        _entries = set()
++        for _entry in dbus_to_python(entries, list):
++            _entries.add(normalize_ipset_entry(_entry))
++        self.settings[5] = list(_entries)
+     @handle_exceptions
+     def addEntry(self, entry):
+         if "timeout" in self.settings[4] and \
+            self.settings[4]["timeout"] != "0":
+             raise FirewallError(errors.IPSET_WITH_TIMEOUT)
++        entry = normalize_ipset_entry(entry)
+         if entry not in self.settings[5]:
+             self.settings[5].append(entry)
+         else:
+@@ -1631,6 +1636,7 @@ class FirewallClientIPSetSettings(object):
+         if "timeout" in self.settings[4] and \
+            self.settings[4]["timeout"] != "0":
+             raise FirewallError(errors.IPSET_WITH_TIMEOUT)
++        entry = normalize_ipset_entry(entry)
+         if entry in self.settings[5]:
+             self.settings[5].remove(entry)
+         else:
+@@ -1640,6 +1646,7 @@ class FirewallClientIPSetSettings(object):
+         if "timeout" in self.settings[4] and \
+            self.settings[4]["timeout"] != "0":
+             raise FirewallError(errors.IPSET_WITH_TIMEOUT)
++        entry = normalize_ipset_entry(entry)
+         return entry in self.settings[5]
+ 
+ # ipset config
+diff --git a/src/firewall/core/fw_ipset.py b/src/firewall/core/fw_ipset.py
+index e90082407562..57e0e6cb51db 100644
+--- a/src/firewall/core/fw_ipset.py
++++ b/src/firewall/core/fw_ipset.py
+@@ -24,7 +24,8 @@
+ __all__ = [ "FirewallIPSet" ]
+ 
+ from firewall.core.logger import log
+-from firewall.core.ipset import remove_default_create_options as rm_def_cr_opts
++from firewall.core.ipset import remove_default_create_options as rm_def_cr_opts, \
++                                normalize_ipset_entry
+ from firewall.core.io.ipset import IPSet
+ from firewall import errors
+ from firewall.errors import FirewallError
+@@ -189,6 +190,7 @@ class FirewallIPSet(object):
+ 
+     def add_entry(self, name, entry):
+         obj = self.get_ipset(name, applied=True)
++        entry = normalize_ipset_entry(entry)
+ 
+         IPSet.check_entry(entry, obj.options, obj.type)
+         if entry in obj.entries:
+@@ -207,6 +209,7 @@ class FirewallIPSet(object):
+ 
+     def remove_entry(self, name, entry):
+         obj = self.get_ipset(name, applied=True)
++        entry = normalize_ipset_entry(entry)
+ 
+         # no entry check for removal
+         if entry not in obj.entries:
+@@ -224,6 +227,7 @@ class FirewallIPSet(object):
+ 
+     def query_entry(self, name, entry):
+         obj = self.get_ipset(name, applied=True)
++        entry = normalize_ipset_entry(entry)
+         if "timeout" in obj.options and obj.options["timeout"] != "0":
+             # no entries visible for ipsets with timeout
+             raise FirewallError(errors.IPSET_WITH_TIMEOUT, name)
+@@ -237,6 +241,11 @@ class FirewallIPSet(object):
+     def set_entries(self, name, entries):
+         obj = self.get_ipset(name, applied=True)
+ 
++        _entries = set()
++        for _entry in entries:
++            _entries.add(normalize_ipset_entry(_entry))
++        entries = list(_entries)
++
+         for entry in entries:
+             IPSet.check_entry(entry, obj.options, obj.type)
+         if "timeout" not in obj.options or obj.options["timeout"] == "0":
+diff --git a/src/firewall/core/ipset.py b/src/firewall/core/ipset.py
+index 0d632143ce13..5bb21856f648 100644
+--- a/src/firewall/core/ipset.py
++++ b/src/firewall/core/ipset.py
+@@ -24,6 +24,7 @@
+ __all__ = [ "ipset", "check_ipset_name", "remove_default_create_options" ]
+ 
+ import os.path
++import ipaddress
+ 
+ from firewall import errors
+ from firewall.errors import FirewallError
+@@ -289,3 +290,15 @@ def remove_default_create_options(options):
+            IPSET_DEFAULT_CREATE_OPTIONS[opt] == _options[opt]:
+             del _options[opt]
+     return _options
++
++def normalize_ipset_entry(entry):
++    """ Normalize IP addresses in entry """
++    _entry = []
++    for _part in entry.split(","):
++        try:
++            _part.index("/")
++            _entry.append(str(ipaddress.ip_network(_part, strict=False)))
++        except ValueError:
++            _entry.append(_part)
++
++    return ",".join(_entry)
+diff --git a/src/firewall/server/config_ipset.py b/src/firewall/server/config_ipset.py
+index 8c647bc29ab9..18ef5783de62 100644
+--- a/src/firewall/server/config_ipset.py
++++ b/src/firewall/server/config_ipset.py
+@@ -33,7 +33,7 @@ from firewall.dbus_utils import dbus_to_python, \
+     dbus_introspection_prepare_properties, \
+     dbus_introspection_add_properties
+ from firewall.core.io.ipset import IPSet
+-from firewall.core.ipset import IPSET_TYPES
++from firewall.core.ipset import IPSET_TYPES, normalize_ipset_entry
+ from firewall.core.logger import log
+ from firewall.server.decorators import handle_exceptions, \
+     dbus_handle_exceptions, dbus_service_method
+@@ -406,7 +406,10 @@ class FirewallDConfigIPSet(slip.dbus.service.Object):
+                          in_signature='as')
+     @dbus_handle_exceptions
+     def setEntries(self, entries, sender=None):
+-        entries = dbus_to_python(entries, list)
++        _entries = set()
++        for _entry in dbus_to_python(entries, list):
++            _entries.add(normalize_ipset_entry(_entry))
++        entries = list(_entries)
+         log.debug1("%s.setEntries('[%s]')", self._log_prefix,
+                    ",".join(entries))
+         self.parent.accessCheck(sender)
+@@ -421,6 +424,7 @@ class FirewallDConfigIPSet(slip.dbus.service.Object):
+     @dbus_handle_exceptions
+     def addEntry(self, entry, sender=None):
+         entry = dbus_to_python(entry, str)
++        entry = normalize_ipset_entry(entry)
+         log.debug1("%s.addEntry('%s')", self._log_prefix, entry)
+         self.parent.accessCheck(sender)
+         settings = list(self.getSettings())
+@@ -436,6 +440,7 @@ class FirewallDConfigIPSet(slip.dbus.service.Object):
+     @dbus_handle_exceptions
+     def removeEntry(self, entry, sender=None):
+         entry = dbus_to_python(entry, str)
++        entry = normalize_ipset_entry(entry)
+         log.debug1("%s.removeEntry('%s')", self._log_prefix, entry)
+         self.parent.accessCheck(sender)
+         settings = list(self.getSettings())
+@@ -451,6 +456,7 @@ class FirewallDConfigIPSet(slip.dbus.service.Object):
+     @dbus_handle_exceptions
+     def queryEntry(self, entry, sender=None): # pylint: disable=W0613
+         entry = dbus_to_python(entry, str)
++        entry = normalize_ipset_entry(entry)
+         log.debug1("%s.queryEntry('%s')", self._log_prefix, entry)
+         settings = list(self.getSettings())
+         if "timeout" in settings[4] and settings[4]["timeout"] != "0":
+diff --git a/src/tests/regression/rhbz1601610.at b/src/tests/regression/rhbz1601610.at
+index ede2c45b88c1..a716539a8acf 100644
+--- a/src/tests/regression/rhbz1601610.at
++++ b/src/tests/regression/rhbz1601610.at
+@@ -6,11 +6,14 @@ CHECK_IPSET
+ FWD_CHECK([-q --new-ipset=foobar --permanent --type=hash:net])
+ FWD_RELOAD
+ 
+-FWD_CHECK([-q --ipset=foobar --add-entry=10.1.1.0/22])
+-FWD_CHECK([-q --ipset=foobar --add-entry=10.1.2.0/22], 13, ignore, ignore)
+-FWD_CHECK([-q --ipset=foobar --add-entry=10.2.0.0/22])
++FWD_CHECK([--ipset=foobar --add-entry=10.1.1.0/22], 0, [ignore])
++FWD_CHECK([--ipset=foobar --query-entry 10.1.2.0/22], 0, [ignore])
++FWD_CHECK([--ipset=foobar --add-entry=10.1.2.0/22], 0, [ignore], [dnl
++Warning: ALREADY_ENABLED: '10.1.0.0/22' already is in 'foobar'
++])
++FWD_CHECK([--ipset=foobar --add-entry=10.2.0.0/22], 0, [ignore])
+ FWD_CHECK([--ipset=foobar --get-entries], 0, [dnl
+-10.1.1.0/22
++10.1.0.0/22
+ 10.2.0.0/22
+ ])
+ NFT_LIST_SET([foobar], 0, [dnl
+@@ -31,6 +34,9 @@ Members:
+ ])
+ 
+ FWD_CHECK([-q --ipset=foobar --remove-entry=10.1.1.0/22])
++FWD_CHECK([--ipset=foobar --query-entry 10.1.1.0/22], 1, [ignore])
++FWD_CHECK([--ipset=foobar --query-entry 10.1.2.0/22], 1, [ignore])
++FWD_CHECK([--ipset=foobar --query-entry 10.2.0.0/22], 0, [ignore])
+ FWD_CHECK([--ipset=foobar --get-entries], 0, [dnl
+ 10.2.0.0/22
+ ])
+@@ -52,7 +58,7 @@ Members:
+ 
+ FWD_CHECK([-q --permanent --ipset=foobar --add-entry=10.1.1.0/22])
+ FWD_CHECK([--permanent --ipset=foobar --get-entries], 0, [dnl
+-10.1.1.0/22
++10.1.0.0/22
+ ])
+ FWD_CHECK([-q --permanent --ipset=foobar --remove-entry=10.1.1.0/22])
+ FWD_CHECK([--permanent --ipset=foobar --get-entries], 0, [
+@@ -101,4 +107,5 @@ Members:
+ 
+ FWD_END_TEST([-e '/ERROR: COMMAND_FAILED:.*already added.*/d'dnl
+               -e '/ERROR: COMMAND_FAILED:.*element.*exists/d'dnl
+-              -e '/Kernel support protocol versions/d'])
++              -e '/Kernel support protocol versions/d'dnl
++              -e '/WARNING: ALREADY_ENABLED:/d'])
+-- 
+2.39.1
+

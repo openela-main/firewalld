@@ -1,0 +1,302 @@
+From 4779d5bf08ff1c24777df4b88b4af2e8e5918f84 Mon Sep 17 00:00:00 2001
+From: Paul Laufer <50234787+refual@users.noreply.github.com>
+Date: Fri, 27 Nov 2020 12:23:11 +0100
+Subject: [PATCH 06/10] v1.0.0: feat(config): add CleanupModulesOnExit
+ configuration option
+
+Fixes: rhbz 1520532
+Fixes: #533
+Closes: #721
+(cherry picked from commit 152a51537a7840afd0879ab4b60178bef4ec16a2)
+---
+ config/firewalld.conf                  |  9 +++++++-
+ doc/xml/firewalld.conf.xml             | 11 ++++++++++
+ doc/xml/firewalld.dbus.xml             |  9 ++++++++
+ src/firewall/config/__init__.py.in     |  1 +
+ src/firewall/core/fw.py                | 29 +++++++++++++++++++-------
+ src/firewall/core/io/firewalld_conf.py | 19 +++++++++++++----
+ src/firewall/server/config.py          | 23 +++++++++++++-------
+ src/tests/dbus/firewalld.conf.at       |  2 ++
+ 8 files changed, 82 insertions(+), 21 deletions(-)
+
+diff --git a/config/firewalld.conf b/config/firewalld.conf
+index a0556c0bbf5b..3abbc9c998c1 100644
+--- a/config/firewalld.conf
++++ b/config/firewalld.conf
+@@ -7,10 +7,17 @@ DefaultZone=public
+ 
+ # Clean up on exit
+ # If set to no or false the firewall configuration will not get cleaned up
+-# on exit or stop of firewalld
++# on exit or stop of firewalld.
+ # Default: yes
+ CleanupOnExit=yes
+ 
++# Clean up kernel modules on exit
++# If set to yes or true the firewall related kernel modules will be
++# unloaded on exit or stop of firewalld. This might attempt to unload
++# modules not originally loaded by firewalld.
++# Default: no
++CleanupModulesOnExit=no
++
+ # Lockdown
+ # If set to enabled, firewall changes with the D-Bus interface will be limited
+ # to applications that are listed in the lockdown whitelist.
+diff --git a/doc/xml/firewalld.conf.xml b/doc/xml/firewalld.conf.xml
+index 0a6e8f2fdebf..3ae531bcd94a 100644
+--- a/doc/xml/firewalld.conf.xml
++++ b/doc/xml/firewalld.conf.xml
+@@ -88,6 +88,17 @@
+ 	</listitem>
+       </varlistentry>
+ 
++      <varlistentry>
++        <term><option>CleanupModulesOnExit</option></term>
++        <listitem>
++          <para>
++            Setting this option to yes or true unloads all firewall-related
++            kernel modules when firewalld is stopped. The default value is no
++            or false.
++          </para>
++        </listitem>
++      </varlistentry>
++
+       <varlistentry>
+ 	<term><option>CleanupOnExit</option></term>
+         <listitem>
+diff --git a/doc/xml/firewalld.dbus.xml b/doc/xml/firewalld.dbus.xml
+index 1c33ad5ee918..cc4593e1883f 100644
+--- a/doc/xml/firewalld.dbus.xml
++++ b/doc/xml/firewalld.dbus.xml
+@@ -2798,6 +2798,15 @@
+               </para>
+             </listitem>
+           </varlistentry>
++          <varlistentry id="FirewallD1.config.Properties.CleanupModulesOnExit">
++            <term>CleanupModulesOnExit - s - (rw)</term>
++            <listitem>
++              <para>
++                Setting this option to yes or true unloads all firewall-related
++                kernel modules when firewalld is stopped.
++              </para>
++            </listitem>
++          </varlistentry>
+           <varlistentry id="FirewallD1.config.Properties.CleanupOnExit">
+             <term>CleanupOnExit - s - (rw)</term>
+             <listitem>
+diff --git a/src/firewall/config/__init__.py.in b/src/firewall/config/__init__.py.in
+index 0dec7913f694..5d6d769fbf15 100644
+--- a/src/firewall/config/__init__.py.in
++++ b/src/firewall/config/__init__.py.in
+@@ -125,6 +125,7 @@ FIREWALL_BACKEND_VALUES = [ "nftables", "iptables" ]
+ FALLBACK_ZONE = "public"
+ FALLBACK_MINIMAL_MARK = 100
+ FALLBACK_CLEANUP_ON_EXIT = True
++FALLBACK_CLEANUP_MODULES_ON_EXIT = False
+ FALLBACK_LOCKDOWN = False
+ FALLBACK_IPV6_RPFILTER = True
+ FALLBACK_INDIVIDUAL_CALLS = False
+diff --git a/src/firewall/core/fw.py b/src/firewall/core/fw.py
+index 3eb54e37ab5c..4171697bdb94 100644
+--- a/src/firewall/core/fw.py
++++ b/src/firewall/core/fw.py
+@@ -105,12 +105,13 @@ class Firewall(object):
+         self.__init_vars()
+ 
+     def __repr__(self):
+-        return '%s(%r, %r, %r, %r, %r, %r, %r, %r, %r, %r, %r, %r, %r)' % \
++        return '%s(%r, %r, %r, %r, %r, %r, %r, %r, %r, %r, %r, %r, %r, %r)' % \
+             (self.__class__, self.ip4tables_enabled, self.ip6tables_enabled,
+              self.ebtables_enabled, self._state, self._panic,
+              self._default_zone, self._module_refcount, self._marks,
+-             self.cleanup_on_exit, self.ipv6_rpfilter_enabled,
+-             self.ipset_enabled, self._individual_calls, self._log_denied)
++             self.cleanup_on_exit, self.cleanup_modules_on_exit,
++             self.ipv6_rpfilter_enabled, self.ipset_enabled,
++             self._individual_calls, self._log_denied)
+ 
+     def __init_vars(self):
+         self._state = "INIT"
+@@ -120,6 +121,7 @@ class Firewall(object):
+         self._marks = [ ]
+         # fallback settings will be overloaded by firewalld.conf
+         self.cleanup_on_exit = config.FALLBACK_CLEANUP_ON_EXIT
++        self.cleanup_modules_on_exit = config.FALLBACK_CLEANUP_MODULES_ON_EXIT
+         self.ipv6_rpfilter_enabled = config.FALLBACK_IPV6_RPFILTER
+         self._individual_calls = config.FALLBACK_INDIVIDUAL_CALLS
+         self._log_denied = config.FALLBACK_LOG_DENIED
+@@ -232,6 +234,13 @@ class Firewall(object):
+                 log.debug1("CleanupOnExit is set to '%s'",
+                            self.cleanup_on_exit)
+ 
++            if self._firewalld_conf.get("CleanupModulesOnExit"):
++                value = self._firewalld_conf.get("CleanupModulesOnExit")
++                if value is not None and value.lower() in [ "yes", "true" ]:
++                    self.cleanup_modules_on_exit = True
++                log.debug1("CleanupModulesOnExit is set to '%s'",
++                           self.cleanup_modules_on_exit)
++
+             if self._firewalld_conf.get("Lockdown"):
+                 value = self._firewalld_conf.get("Lockdown")
+                 if value is not None and value.lower() in [ "yes", "true" ]:
+@@ -667,11 +676,15 @@ class Firewall(object):
+         self.__init_vars()
+ 
+     def stop(self):
+-        if self.cleanup_on_exit and not self._offline:
+-            self.flush()
+-            self.ipset.flush()
+-            self.set_policy("ACCEPT")
+-            self.modules_backend.unload_firewall_modules()
++        if not self._offline:
++            if self.cleanup_on_exit:
++                self.flush()
++                self.ipset.flush()
++                self.set_policy("ACCEPT")
++
++            if self.cleanup_modules_on_exit:
++                log.debug1('Unloading firewall kernel modules')
++                self.modules_backend.unload_firewall_modules()
+ 
+         self.cleanup()
+ 
+diff --git a/src/firewall/core/io/firewalld_conf.py b/src/firewall/core/io/firewalld_conf.py
+index 7c7092120676..70258400ef06 100644
+--- a/src/firewall/core/io/firewalld_conf.py
++++ b/src/firewall/core/io/firewalld_conf.py
+@@ -28,10 +28,11 @@ from firewall import config
+ from firewall.core.logger import log
+ from firewall.functions import b2u, u2b, PY2
+ 
+-valid_keys = [ "DefaultZone", "MinimalMark", "CleanupOnExit", "Lockdown",
+-               "IPv6_rpfilter", "IndividualCalls", "LogDenied",
+-               "AutomaticHelpers", "FirewallBackend", "FlushAllOnReload",
+-               "RFC3964_IPv4", "AllowZoneDrifting" ]
++valid_keys = [ "DefaultZone", "MinimalMark", "CleanupOnExit",
++               "CleanupModulesOnExit", "Lockdown", "IPv6_rpfilter",
++               "IndividualCalls", "LogDenied", "AutomaticHelpers",
++               "FirewallBackend", "FlushAllOnReload", "RFC3964_IPv4",
++               "AllowZoneDrifting" ]
+ 
+ class firewalld_conf(object):
+     def __init__(self, filename):
+@@ -75,6 +76,7 @@ class firewalld_conf(object):
+             self.set("DefaultZone", config.FALLBACK_ZONE)
+             self.set("MinimalMark", str(config.FALLBACK_MINIMAL_MARK))
+             self.set("CleanupOnExit", "yes" if config.FALLBACK_CLEANUP_ON_EXIT else "no")
++            self.set("CleanupModulesOnExit", "yes" if config.FALLBACK_CLEANUP_MODULES_ON_EXIT else "no")
+             self.set("Lockdown", "yes" if config.FALLBACK_LOCKDOWN else "no")
+             self.set("IPv6_rpfilter","yes" if config.FALLBACK_IPV6_RPFILTER else "no")
+             self.set("IndividualCalls", "yes" if config.FALLBACK_INDIVIDUAL_CALLS else "no")
+@@ -135,6 +137,15 @@ class firewalld_conf(object):
+                             config.FALLBACK_CLEANUP_ON_EXIT)
+             self.set("CleanupOnExit", "yes" if config.FALLBACK_CLEANUP_ON_EXIT else "no")
+ 
++        # check module cleanup on exit
++        value = self.get("CleanupModulesOnExit")
++        if not value or value.lower() not in [ "no", "false", "yes", "true" ]:
++            if value is not None:
++                log.warning("CleanupModulesOnExit '%s' is not valid, using default "
++                            "value %s", value if value else '',
++                            config.FALLBACK_CLEANUP_MODULES_ON_EXIT)
++            self.set("CleanupModulesOnExit", "yes" if config.FALLBACK_CLEANUP_MODULES_ON_EXIT else "no")
++
+         # check lockdown
+         value = self.get("Lockdown")
+         if not value or value.lower() not in [ "yes", "true", "no", "false" ]:
+diff --git a/src/firewall/server/config.py b/src/firewall/server/config.py
+index 031ef5d1afaa..8815920c6893 100644
+--- a/src/firewall/server/config.py
++++ b/src/firewall/server/config.py
+@@ -100,6 +100,7 @@ class FirewallDConfig(slip.dbus.service.Object):
+         dbus_introspection_prepare_properties(self,
+                                               config.dbus.DBUS_INTERFACE_CONFIG,
+                                               { "CleanupOnExit": "readwrite",
++                                                "CleanupModulesOnExit": "readwrite",
+                                                 "IPv6_rpfilter": "readwrite",
+                                                 "Lockdown": "readwrite",
+                                                 "MinimalMark": "readwrite",
+@@ -554,9 +555,9 @@ class FirewallDConfig(slip.dbus.service.Object):
+     @dbus_handle_exceptions
+     def _get_property(self, prop):
+         if prop not in [ "DefaultZone", "MinimalMark", "CleanupOnExit",
+-                         "Lockdown", "IPv6_rpfilter", "IndividualCalls",
+-                         "LogDenied", "AutomaticHelpers", "FirewallBackend",
+-                         "FlushAllOnReload", "RFC3964_IPv4",
++                         "CleanupModulesOnExit", "Lockdown", "IPv6_rpfilter",
++                         "IndividualCalls", "LogDenied", "AutomaticHelpers",
++                         "FirewallBackend", "FlushAllOnReload", "RFC3964_IPv4",
+                          "AllowZoneDrifting" ]:
+             raise dbus.exceptions.DBusException(
+                 "org.freedesktop.DBus.Error.InvalidArgs: "
+@@ -578,6 +579,10 @@ class FirewallDConfig(slip.dbus.service.Object):
+             if value is None:
+                 value = "yes" if config.FALLBACK_CLEANUP_ON_EXIT else "no"
+             return dbus.String(value)
++        elif prop == "CleanupModulesOnExit":
++            if value is None:
++                value = "yes" if config.FALLBACK_CLEANUP_MODULES_ON_EXIT else "no"
++            return dbus.String(value)
+         elif prop == "Lockdown":
+             if value is None:
+                 value = "yes" if config.FALLBACK_LOCKDOWN else "no"
+@@ -623,6 +628,8 @@ class FirewallDConfig(slip.dbus.service.Object):
+             return dbus.Int32(self._get_property(prop))
+         elif prop == "CleanupOnExit":
+             return dbus.String(self._get_property(prop))
++        elif prop == "CleanupModulesOnExit":
++            return dbus.String(self._get_property(prop))
+         elif prop == "Lockdown":
+             return dbus.String(self._get_property(prop))
+         elif prop == "IPv6_rpfilter":
+@@ -679,9 +686,9 @@ class FirewallDConfig(slip.dbus.service.Object):
+         ret = { }
+         if interface_name == config.dbus.DBUS_INTERFACE_CONFIG:
+             for x in [ "DefaultZone", "MinimalMark", "CleanupOnExit",
+-                       "Lockdown", "IPv6_rpfilter", "IndividualCalls",
+-                       "LogDenied", "AutomaticHelpers", "FirewallBackend",
+-                       "FlushAllOnReload", "RFC3964_IPv4",
++                       "CleanupModulesOnExit", "Lockdown", "IPv6_rpfilter",
++                       "IndividualCalls", "LogDenied", "AutomaticHelpers",
++                       "FirewallBackend", "FlushAllOnReload", "RFC3964_IPv4",
+                        "AllowZoneDrifting" ]:
+                 ret[x] = self._get_property(x)
+         elif interface_name in [ config.dbus.DBUS_INTERFACE_CONFIG_DIRECT,
+@@ -706,12 +713,12 @@ class FirewallDConfig(slip.dbus.service.Object):
+         self.accessCheck(sender)
+ 
+         if interface_name == config.dbus.DBUS_INTERFACE_CONFIG:
+-            if property_name in [ "CleanupOnExit", "Lockdown",
++            if property_name in [ "CleanupOnExit", "Lockdown", "CleanupModulesOnExit",
+                                   "IPv6_rpfilter", "IndividualCalls",
+                                   "LogDenied",
+                                   "FirewallBackend", "FlushAllOnReload",
+                                   "RFC3964_IPv4", "AllowZoneDrifting" ]:
+-                if property_name in [ "CleanupOnExit", "Lockdown",
++                if property_name in [ "CleanupOnExit", "Lockdown", "CleanupModulesOnExit",
+                                       "IPv6_rpfilter", "IndividualCalls" ]:
+                     if new_value.lower() not in [ "yes", "no",
+                                                   "true", "false" ]:
+diff --git a/src/tests/dbus/firewalld.conf.at b/src/tests/dbus/firewalld.conf.at
+index 9fc5502a8d0b..9a04a3bd491c 100644
+--- a/src/tests/dbus/firewalld.conf.at
++++ b/src/tests/dbus/firewalld.conf.at
+@@ -17,6 +17,7 @@ dnl Verify defaults over dbus. Should be inline with default firewalld.conf.
+ DBUS_GETALL([config], [config], 0, [dnl
+ string "AllowZoneDrifting" : variant string "no"
+ string "AutomaticHelpers" : variant string "no"
++string "CleanupModulesOnExit" : variant string "no"
+ string "CleanupOnExit" : variant string "no"
+ string "DefaultZone" : variant string "public"
+ string "FirewallBackend" : variant string "nftables"
+@@ -45,6 +46,7 @@ _helper([IPv6_rpfilter], [string:"yes"], [variant string "yes"])
+ _helper([IndividualCalls], [string:"yes"], [variant string "yes"])
+ _helper([FirewallBackend], [string:"iptables"], [variant string "iptables"])
+ _helper([FlushAllOnReload], [string:"no"], [variant string "no"])
++_helper([CleanupModulesOnExit], [string:"yes"], [variant string "yes"])
+ _helper([CleanupOnExit], [string:"yes"], [variant string "yes"])
+ _helper([RFC3964_IPv4], [string:"no"], [variant string "no"])
+ _helper([AllowZoneDrifting], [string:"yes"], [variant string "yes"])
+-- 
+2.39.1
+
