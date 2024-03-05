@@ -1,11 +1,14 @@
 Summary: A firewall daemon with D-Bus interface providing a dynamic firewall
 Name: firewalld
-Version: 1.2.1
-Release: 1%{?dist}
+Version: 1.2.5
+Release: 2%{?dist}
 URL:     http://www.firewalld.org
 License: GPLv2+
 Source0: https://github.com/firewalld/firewalld/releases/download/v%{version}/firewalld-%{version}.tar.gz
 Patch1: 0001-RHEL-only-Add-cockpit-by-default-to-some-zones.patch
+Patch2: 0002-v1.4.0-test-atlocal-pass-EBTABLES-to-testsuite.patch
+Patch3: 0003-v1.4.0-feat-direct-avoid-iptables-flush-if-using-nft.patch
+Patch4: 0004-v1.4.0-test-direct-avoid-iptables-flush-if-using-nft.patch
 BuildArch: noarch
 BuildRequires: autoconf
 BuildRequires: automake
@@ -227,6 +230,13 @@ rm -rf %{buildroot}%{_datadir}/firewalld/testsuite
 %{_mandir}/man1/firewall-config*.1*
 
 %changelog
+* Wed Oct 25 2023 Eric Garver <egarver@redhat.com> - 1.2.5-2
+- bump NVR for release retarget
+
+* Mon Apr 24 2023 Eric Garver <egarver@redhat.com> - 1.2.5-1
+- package rebase to v1.2.5
+- feat(direct): avoid iptables flush if using nftables backend
+
 * Mon Nov 07 2022 Eric Garver <egarver@redhat.com> - 1.2.1-1
 - package rebase to v1.2.1
 

@@ -1,0 +1,117 @@
+From fbe4244b3663c3b96c174f6ed8d3d222cc1adcf8 Mon Sep 17 00:00:00 2001
+From: Eric Garver <eric@garver.life>
+Date: Mon, 30 Jan 2023 16:42:50 -0500
+Subject: [PATCH 3/4] v1.4.0: feat(direct): avoid iptables flush if using
+ nftables backend
+
+If FirewallBackend=nftables and there are no direct rules; then we can
+avoid flushing iptables at startup and shutdown. This means other
+applications can control iptables while firewalld only touches nftables.
+
+Fixes: #863
+(cherry picked from commit b7faa74db15e2d1ebd9fdfcdc7579874d3a2fa87)
+---
+ src/firewall/core/fw.py        | 31 +++++++++++++++++++++++++++----
+ src/firewall/core/fw_direct.py |  9 +++++++++
+ 2 files changed, 36 insertions(+), 4 deletions(-)
+
+diff --git a/src/firewall/core/fw.py b/src/firewall/core/fw.py
+index 3e1bab575769..6710900839f8 100644
+--- a/src/firewall/core/fw.py
++++ b/src/firewall/core/fw.py
+@@ -469,7 +469,8 @@ class Firewall(object):
+     def _start_apply_objects(self, reload=False, complete_reload=False):
+         transaction = FirewallTransaction(self)
+ 
+-        self.flush(use_transaction=transaction)
++        if not reload:
++            self.flush(use_transaction=transaction)
+ 
+         # If modules need to be unloaded in complete reload or if there are
+         # ipsets to get applied, limit the transaction to flush.
+@@ -939,7 +940,26 @@ class Firewall(object):
+         if use_transaction is None:
+             transaction.execute(True)
+ 
+-    # flush and policy
++    def may_skip_flush_direct_backends(self):
++        if self.nftables_enabled and not self.direct.has_runtime_configuration():
++            return True
++
++        return False
++
++    def flush_direct_backends(self, use_transaction=None):
++        if use_transaction is None:
++            transaction = FirewallTransaction(self)
++        else:
++            transaction = use_transaction
++
++        for backend in self.all_backends():
++            if backend in self.enabled_backends():
++                continue
++            rules = backend.build_flush_rules()
++            transaction.add_rules(backend, rules)
++
++        if use_transaction is None:
++            transaction.execute(True)
+ 
+     def flush(self, use_transaction=None):
+         if use_transaction is None:
+@@ -949,7 +969,10 @@ class Firewall(object):
+ 
+         log.debug1("Flushing rule set")
+ 
+-        for backend in self.all_backends():
++        if not self.may_skip_flush_direct_backends():
++            self.flush_direct_backends(use_transaction=transaction)
++
++        for backend in self.enabled_backends():
+             rules = backend.build_flush_rules()
+             transaction.add_rules(backend, rules)
+ 
+@@ -1109,7 +1132,7 @@ class Firewall(object):
+         if not _panic:
+             self.set_policy("DROP")
+ 
+-        # stop
++        self.flush()
+         self.cleanup()
+ 
+         start_exception = None
+diff --git a/src/firewall/core/fw_direct.py b/src/firewall/core/fw_direct.py
+index 508cfa54f7fa..a4cd8a77e773 100644
+--- a/src/firewall/core/fw_direct.py
++++ b/src/firewall/core/fw_direct.py
+@@ -219,6 +219,9 @@ class FirewallDirect(object):
+         else:
+             transaction = use_transaction
+ 
++        if self._fw.may_skip_flush_direct_backends():
++            transaction.add_pre(self._fw.flush_direct_backends)
++
+         if self._fw.ipset_enabled and self._fw.ipset.omit_native_ipset():
+             transaction.add_pre(self._fw.ipset.apply_ipsets, [self._fw.ipset_backend])
+ 
+@@ -268,6 +271,9 @@ class FirewallDirect(object):
+         else:
+             transaction = use_transaction
+ 
++        if self._fw.may_skip_flush_direct_backends():
++            transaction.add_pre(self._fw.flush_direct_backends)
++
+         if self._fw.ipset_enabled and self._fw.ipset.omit_native_ipset():
+             transaction.add_pre(self._fw.ipset.apply_ipsets, [self._fw.ipset_backend])
+ 
+@@ -353,6 +359,9 @@ class FirewallDirect(object):
+         else:
+             transaction = use_transaction
+ 
++        if self._fw.may_skip_flush_direct_backends():
++            transaction.add_pre(self._fw.flush_direct_backends)
++
+         if self._fw.ipset_enabled and self._fw.ipset.omit_native_ipset():
+             transaction.add_pre(self._fw.ipset.apply_ipsets, [self._fw.ipset_backend])
+ 
+-- 
+2.39.1
+

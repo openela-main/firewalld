@@ -1,0 +1,46 @@
+From c1aadce88b0adc4e116254a80f3a7f4634958e01 Mon Sep 17 00:00:00 2001
+From: Eric Garver <eric@garver.life>
+Date: Tue, 31 Jan 2023 09:24:56 -0500
+Subject: [PATCH 2/4] v1.4.0: test(atlocal): pass EBTABLES to testsuite
+
+(cherry picked from commit a5adb26a5eebdaa6e978c580d4fb73f7aa06802f)
+---
+ src/tests/atlocal.in   | 1 +
+ src/tests/functions.at | 3 ++-
+ 2 files changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/src/tests/atlocal.in b/src/tests/atlocal.in
+index 8c5493ac38df..595a96f0f5c9 100644
+--- a/src/tests/atlocal.in
++++ b/src/tests/atlocal.in
+@@ -1,5 +1,6 @@
+ export PYTHON="@PYTHON@"
+ 
++export EBTABLES="@EBTABLES@"
+ export IPTABLES="@IPTABLES@"
+ export IPTABLES_RESTORE="@IPTABLES_RESTORE@"
+ export IP6TABLES="@IP6TABLES@"
+diff --git a/src/tests/functions.at b/src/tests/functions.at
+index 4ef61a3147a4..50fb6bfb4541 100644
+--- a/src/tests/functions.at
++++ b/src/tests/functions.at
+@@ -104,6 +104,7 @@ m4_define([FWD_START_TEST], [
+     dnl in atlocal.
+     dnl
+     test -z "$PYTHON" && export PYTHON="python3"
++    test -z "$EBTABLES" && export EBTABLES="ebtables"
+     test -z "$IPTABLES" && export IPTABLES="iptables"
+     test -z "$IPTABLES_RESTORE" && export IPTABLES_RESTORE="iptables-restore"
+     test -z "$IP6TABLES" && export IP6TABLES="ip6tables"
+@@ -395,7 +396,7 @@ m4_define([EBTABLES_LIST_RULES_NORMALIZE], [dnl
+ m4_define([EBTABLES_LIST_RULES], [
+     dnl ebtables commit 5f508b76a0ce change list output for inversion.
+     m4_ifdef([TESTING_FIREWALL_OFFLINE_CMD], [], [
+-        NS_CHECK([PIPESTATUS0([ebtables --concurrent -t $1 -L $2], [EBTABLES_LIST_RULES_NORMALIZE])],
++        NS_CHECK([PIPESTATUS0([$EBTABLES --concurrent -t $1 -L $2], [EBTABLES_LIST_RULES_NORMALIZE])],
+                  [$3], [m4_strip([$4])], [m4_strip([$5])], [$6], [$7])
+     ])
+ ])
+-- 
+2.39.1
+
