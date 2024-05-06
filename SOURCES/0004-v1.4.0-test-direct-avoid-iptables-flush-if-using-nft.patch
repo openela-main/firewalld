@@ -1,4 +1,4 @@
-From 5f092d3665463b764b957ef219010e0640babde7 Mon Sep 17 00:00:00 2001
+From 6069c94b5033fc82d8f35f2068a61374559d22de Mon Sep 17 00:00:00 2001
 From: Eric Garver <eric@garver.life>
 Date: Mon, 30 Jan 2023 14:43:18 -0500
 Subject: [PATCH 4/4] v1.4.0: test(direct): avoid iptables flush if using
@@ -13,17 +13,17 @@ Coverage: #863
  create mode 100644 src/tests/features/iptables_no_flush_on_shutdown.at
 
 diff --git a/src/tests/features/features.at b/src/tests/features/features.at
-index 96b098de6e82..59725eb9fdf4 100644
+index 78fe78c483ad..f59baea1cd70 100644
 --- a/src/tests/features/features.at
 +++ b/src/tests/features/features.at
-@@ -18,3 +18,4 @@ m4_include([features/rpfilter.at])
- m4_include([features/zone_combine.at])
+@@ -19,3 +19,4 @@ m4_include([features/zone_combine.at])
  m4_include([features/startup_failsafe.at])
  m4_include([features/ipset.at])
+ m4_include([features/reset_defaults.at])
 +m4_include([features/iptables_no_flush_on_shutdown.at])
 diff --git a/src/tests/features/iptables_no_flush_on_shutdown.at b/src/tests/features/iptables_no_flush_on_shutdown.at
 new file mode 100644
-index 000000000000..753a8251f732
+index 000000000000..fbd7c793375c
 --- /dev/null
 +++ b/src/tests/features/iptables_no_flush_on_shutdown.at
 @@ -0,0 +1,144 @@
@@ -47,20 +47,20 @@ index 000000000000..753a8251f732
 +NS_CHECK([$EBTABLES -t filter -N firewalld_testsuite])
 +NS_CHECK([$EBTABLES -t filter -I firewalld_testsuite -j ACCEPT])
 +IPTABLES_LIST_RULES_ALWAYS([filter], [firewalld_testsuite], 0, [dnl
-+    ACCEPT all -- 0.0.0.0/0 0.0.0.0/0
++    ACCEPT 0 -- 0.0.0.0/0 0.0.0.0/0
 +])
 +IP6TABLES_LIST_RULES_ALWAYS([filter], [firewalld_testsuite], 0, [dnl
-+    ACCEPT all ::/0 ::/0
++    ACCEPT 0 -- ::/0 ::/0
 +])
 +EBTABLES_LIST_RULES([filter], [firewalld_testsuite], 0, [dnl
 +    -j ACCEPT
 +])
 +FWD_RELOAD()
 +IPTABLES_LIST_RULES_ALWAYS([filter], [firewalld_testsuite], 0, [dnl
-+    ACCEPT all -- 0.0.0.0/0 0.0.0.0/0
++    ACCEPT 0 -- 0.0.0.0/0 0.0.0.0/0
 +])
 +IP6TABLES_LIST_RULES_ALWAYS([filter], [firewalld_testsuite], 0, [dnl
-+    ACCEPT all ::/0 ::/0
++    ACCEPT 0 -- ::/0 ::/0
 +])
 +EBTABLES_LIST_RULES([filter], [firewalld_testsuite], 0, [dnl
 +    -j ACCEPT
@@ -69,10 +69,10 @@ index 000000000000..753a8251f732
 +dnl no flush on restart (or stop) if no direct rules
 +FWD_RESTART()
 +IPTABLES_LIST_RULES_ALWAYS([filter], [firewalld_testsuite], 0, [dnl
-+    ACCEPT all -- 0.0.0.0/0 0.0.0.0/0
++    ACCEPT 0 -- 0.0.0.0/0 0.0.0.0/0
 +])
 +IP6TABLES_LIST_RULES_ALWAYS([filter], [firewalld_testsuite], 0, [dnl
-+    ACCEPT all ::/0 ::/0
++    ACCEPT 0 -- ::/0 ::/0
 +])
 +EBTABLES_LIST_RULES([filter], [firewalld_testsuite], 0, [dnl
 +    -j ACCEPT
@@ -84,7 +84,7 @@ index 000000000000..753a8251f732
 +IP6TABLES_LIST_RULES_ALWAYS([filter], [firewalld_testsuite], 1, [ignore], [ignore])
 +EBTABLES_LIST_RULES([filter], [firewalld_testsuite], 1, [ignore], [ignore])
 +IPTABLES_LIST_RULES_ALWAYS([filter], [INPUT], 0, [dnl
-+    ACCEPT all -- 0.0.0.0/0 0.0.0.0/0
++    ACCEPT 0 -- 0.0.0.0/0 0.0.0.0/0
 +])
 +NS_CHECK([$IPTABLES -t filter -N firewalld_testsuite])
 +NS_CHECK([$IPTABLES -t filter -I firewalld_testsuite -j ACCEPT])
@@ -95,10 +95,10 @@ index 000000000000..753a8251f732
 +NS_CHECK([$EBTABLES -t filter -N firewalld_testsuite])
 +NS_CHECK([$EBTABLES -t filter -I firewalld_testsuite -j ACCEPT])
 +IPTABLES_LIST_RULES_ALWAYS([filter], [firewalld_testsuite], 0, [dnl
-+    ACCEPT all -- 0.0.0.0/0 0.0.0.0/0
++    ACCEPT 0 -- 0.0.0.0/0 0.0.0.0/0
 +])
 +IP6TABLES_LIST_RULES_ALWAYS([filter], [firewalld_testsuite], 0, [dnl
-+    ACCEPT all ::/0 ::/0
++    ACCEPT 0 -- ::/0 ::/0
 +])
 +EBTABLES_LIST_RULES([filter], [firewalld_testsuite], 0, [dnl
 +    -j ACCEPT
@@ -127,7 +127,7 @@ index 000000000000..753a8251f732
 +FWD_RELOAD()
 +IPTABLES_LIST_RULES_ALWAYS([filter], [firewalld_testsuite], 1, [ignore], [ignore])
 +IPTABLES_LIST_RULES_ALWAYS([filter], [INPUT], 0, [dnl
-+    ACCEPT all -- 0.0.0.0/0 0.0.0.0/0
++    ACCEPT 0 -- 0.0.0.0/0 0.0.0.0/0
 +])
 +IP6TABLES_LIST_RULES_ALWAYS([filter], [firewalld_testsuite], 1, [ignore], [ignore])
 +IP6TABLES_LIST_RULES_ALWAYS([filter], [INPUT], 0, [dnl
@@ -172,5 +172,5 @@ index 000000000000..753a8251f732
 +
 +])
 -- 
-2.39.1
+2.39.3
 

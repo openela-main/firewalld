@@ -1,4 +1,4 @@
-From c1aadce88b0adc4e116254a80f3a7f4634958e01 Mon Sep 17 00:00:00 2001
+From 0598abdbc3dd1816e9cc19186de9e95c6485519d Mon Sep 17 00:00:00 2001
 From: Eric Garver <eric@garver.life>
 Date: Tue, 31 Jan 2023 09:24:56 -0500
 Subject: [PATCH 2/4] v1.4.0: test(atlocal): pass EBTABLES to testsuite
@@ -21,7 +21,7 @@ index 8c5493ac38df..595a96f0f5c9 100644
  export IPTABLES_RESTORE="@IPTABLES_RESTORE@"
  export IP6TABLES="@IP6TABLES@"
 diff --git a/src/tests/functions.at b/src/tests/functions.at
-index 4ef61a3147a4..50fb6bfb4541 100644
+index ad3462c6715f..f454ca980046 100644
 --- a/src/tests/functions.at
 +++ b/src/tests/functions.at
 @@ -104,6 +104,7 @@ m4_define([FWD_START_TEST], [
@@ -32,7 +32,7 @@ index 4ef61a3147a4..50fb6bfb4541 100644
      test -z "$IPTABLES" && export IPTABLES="iptables"
      test -z "$IPTABLES_RESTORE" && export IPTABLES_RESTORE="iptables-restore"
      test -z "$IP6TABLES" && export IP6TABLES="ip6tables"
-@@ -395,7 +396,7 @@ m4_define([EBTABLES_LIST_RULES_NORMALIZE], [dnl
+@@ -398,7 +399,7 @@ m4_define([EBTABLES_LIST_RULES_NORMALIZE], [dnl
  m4_define([EBTABLES_LIST_RULES], [
      dnl ebtables commit 5f508b76a0ce change list output for inversion.
      m4_ifdef([TESTING_FIREWALL_OFFLINE_CMD], [], [
@@ -42,5 +42,5 @@ index 4ef61a3147a4..50fb6bfb4541 100644
      ])
  ])
 -- 
-2.39.1
+2.39.3
 
