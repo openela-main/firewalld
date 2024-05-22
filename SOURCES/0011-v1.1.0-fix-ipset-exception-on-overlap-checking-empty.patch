@@ -1,0 +1,32 @@
+From e9e1edef3af8bd1a6b7c27fdd2d580e2f1571440 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Fran=C3=A7ois=20Rigault?= <rigault.francois@gmail.com>
+Date: Sun, 28 Aug 2022 10:25:33 +0200
+Subject: [PATCH 11/17] v1.1.0: fix(ipset): exception on overlap checking empty
+ set
+
+In the case of --remove-entries-from-file, check_for_overlapping_entries
+can be called with no entry in input, which fails with an exception.
+
+Fixes: rhbz2121985
+(cherry picked from commit 1ea554e6263ed21aa9ae6e5f0abb629d53b4a7bc)
+---
+ src/firewall/core/ipset.py | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/src/firewall/core/ipset.py b/src/firewall/core/ipset.py
+index b160d8345669..d8e0a1ab1e56 100644
+--- a/src/firewall/core/ipset.py
++++ b/src/firewall/core/ipset.py
+@@ -327,6 +327,9 @@ def check_for_overlapping_entries(entries):
+         # at least one entry can not be parsed
+         return
+ 
++    if len(entries) == 0:
++        return
++
+     # We can take advantage of some facts of IPv4Network/IPv6Network and
+     # how Python sorts the networks to quickly detect overlaps.
+     #
+-- 
+2.39.3
+

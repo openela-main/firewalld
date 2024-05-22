@@ -1,0 +1,45 @@
+From 08f76e2aa6d7ca35cfb626f20ace1f9036cda3a0 Mon Sep 17 00:00:00 2001
+From: Eric Garver <eric@garver.life>
+Date: Mon, 14 Aug 2023 09:13:29 -0400
+Subject: [PATCH 14/17] v1.2.0: chore(nftables): add delete table helper
+
+This is to workaround an nftables issue where using the "delete" verb on
+a table that does not exist will throw ENOENT. We can't use the newer
+"destroy" verb because it's too new to rely upon.
+
+A simple hack is to always add the table before deleting it. The "add"
+is ignored if the table already exists.
+
+(cherry picked from commit 8be561d26931832f000526cc41293700faa6c877)
+---
+ src/firewall/core/nftables.py | 14 ++++++++++++++
+ 1 file changed, 14 insertions(+)
+
+diff --git a/src/firewall/core/nftables.py b/src/firewall/core/nftables.py
+index 2764bcf93645..1959bdce73be 100644
+--- a/src/firewall/core/nftables.py
++++ b/src/firewall/core/nftables.py
+@@ -396,6 +396,20 @@ class nftables(object):
+         # Tables always exist in nftables
+         return [table] if table else IPTABLES_TO_NFT_HOOK.keys()
+ 
++    def _build_delete_table_rules(self, table):
++        # To avoid nftables returning ENOENT we always add the table before
++        # deleting to guarantee it will exist.
++        #
++        # In the future, this add+delete should be replaced with "destroy", but
++        # that verb is too new to rely upon.
++        rules = []
++        for family in ["inet", "ip", "ip6"]:
++            rules.append({"add": {"table": {"family": family,
++                                            "name": table}}})
++            rules.append({"delete": {"table": {"family": family,
++                                               "name": table}}})
++        return rules
++
+     def build_flush_rules(self):
+         # Policy is stashed in a separate table that we're _not_ going to
+         # flush. As such, we retain the policy rule handles and ref counts.
+-- 
+2.39.3
+

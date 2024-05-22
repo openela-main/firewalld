@@ -1,0 +1,82 @@
+From 8c79246dbc5b8945c22b313ad51be698f2b61316 Mon Sep 17 00:00:00 2001
+From: Eric Garver <eric@garver.life>
+Date: Wed, 9 Aug 2023 14:39:08 -0400
+Subject: [PATCH 16/17] v1.2.0: test(CleanUpOnExit): verify restart does not
+ duplicate rules
+
+Coverage: rhbz2222044
+(cherry picked from commit c66e752a00c05a5afa58904850d244f50528059e)
+---
+ src/tests/regression/regression.at  |  1 +
+ src/tests/regression/rhbz2222044.at | 50 +++++++++++++++++++++++++++++
+ 2 files changed, 51 insertions(+)
+ create mode 100644 src/tests/regression/rhbz2222044.at
+
+diff --git a/src/tests/regression/regression.at b/src/tests/regression/regression.at
+index 889c66dd175d..bc9aeb1a8624 100644
+--- a/src/tests/regression/regression.at
++++ b/src/tests/regression/regression.at
+@@ -52,3 +52,4 @@ m4_include([regression/rhbz2181406.at])
+ m4_include([regression/ipset_scale.at])
+ m4_include([regression/gh881.at])
+ m4_include([regression/gh1011.at])
++m4_include([regression/rhbz2222044.at])
+diff --git a/src/tests/regression/rhbz2222044.at b/src/tests/regression/rhbz2222044.at
+new file mode 100644
+index 000000000000..9f3b1615b2f9
+--- /dev/null
++++ b/src/tests/regression/rhbz2222044.at
+@@ -0,0 +1,50 @@
++FWD_START_TEST([duplicate rules after restart])
++AT_KEYWORDS(rhbz2222044)
++AT_SKIP_IF([! NS_CMD([command -v wc >/dev/null 2>&1])])
++
++dnl rules have not changed so rule count should not change
++m4_define([check_rule_count], [
++m4_if(nftables, FIREWALL_BACKEND, [
++NS_CHECK([nft list table inet firewalld | wc -l], 0, [dnl
++237
++])
++NS_CHECK([nft list table ip firewalld | wc -l], 0, [dnl
++105
++])
++NS_CHECK([nft list table ip6 firewalld | wc -l], 0, [dnl
++105
++])
++], [ dnl iptables
++NS_CHECK([iptables-save | wc -l], 0, [dnl
++256
++])
++])])
++
++dnl --------------------------
++dnl --------------------------
++
++AT_CHECK([sed -i 's/^CleanupOnExit.*/CleanupOnExit=yes/' ./firewalld.conf])
++FWD_RELOAD()
++
++check_rule_count()
++FWD_RESTART()
++check_rule_count()
++
++check_rule_count()
++FWD_RELOAD()
++check_rule_count()
++
++dnl Now do it again, but with CleanupOnExit=no
++AT_CHECK([sed -i 's/^CleanupOnExit.*/CleanupOnExit=no/' ./firewalld.conf])
++FWD_RELOAD()
++
++check_rule_count()
++FWD_RESTART()
++check_rule_count()
++
++check_rule_count()
++FWD_RELOAD()
++check_rule_count()
++
++m4_undefine([check_rule_count])
++FWD_END_TEST()
+-- 
+2.39.3
+

@@ -1,0 +1,48 @@
+From a7b4212df4e1aa05d8dcb8fd4cf5e353a84d3481 Mon Sep 17 00:00:00 2001
+From: Eric Garver <eric@garver.life>
+Date: Mon, 29 Aug 2022 08:37:50 -0400
+Subject: [PATCH 12/17] v1.1.0: test(ipset): verify --remove-entries-from-file
+
+Specifically if it results in an empty set.
+
+Coverage: rhbz2121985
+(cherry picked from commit edea40189e10d3f7777e69746592fb5e2e0e36ea)
+---
+ src/tests/regression/gh1011.at     | 15 +++++++++++++++
+ src/tests/regression/regression.at |  1 +
+ 2 files changed, 16 insertions(+)
+ create mode 100644 src/tests/regression/gh1011.at
+
+diff --git a/src/tests/regression/gh1011.at b/src/tests/regression/gh1011.at
+new file mode 100644
+index 000000000000..037ab70648eb
+--- /dev/null
++++ b/src/tests/regression/gh1011.at
+@@ -0,0 +1,15 @@
++FWD_START_TEST([remove entries results in empty])
++AT_KEYWORDS(ipset gh1011 rhbz2121985)
++
++FWD_CHECK([--permanent --new-ipset foobar --type hash:net], 0, [ignore])
++AT_DATA([./empty], [dnl
++10.10.10.0/24
++])
++FWD_CHECK([--permanent --ipset foobar --add-entry 10.10.10.0/24], 0, [ignore])
++FWD_CHECK([--permanent --ipset foobar --remove-entries-from-file ./empty], 0, [ignore])
++
++FWD_RELOAD()
++FWD_CHECK([--ipset foobar --add-entry 10.10.10.0/24], 0, [ignore])
++FWD_CHECK([--ipset foobar --remove-entries-from-file ./empty], 0, [ignore])
++
++FWD_END_TEST()
+diff --git a/src/tests/regression/regression.at b/src/tests/regression/regression.at
+index 143298d3235f..889c66dd175d 100644
+--- a/src/tests/regression/regression.at
++++ b/src/tests/regression/regression.at
+@@ -51,3 +51,4 @@ m4_include([regression/service_includes_for_builtin.at])
+ m4_include([regression/rhbz2181406.at])
+ m4_include([regression/ipset_scale.at])
+ m4_include([regression/gh881.at])
++m4_include([regression/gh1011.at])
+-- 
+2.39.3
+

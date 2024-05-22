@@ -1,0 +1,32 @@
+From 2ca79f8ebbadcf39f9b378b7fd296fcef13a4c54 Mon Sep 17 00:00:00 2001
+From: Eric Garver <eric@garver.life>
+Date: Mon, 14 Aug 2023 09:21:17 -0400
+Subject: [PATCH 17/17] v1.2.0: chore(nftables): policy: use delete table
+ helper
+
+Use the new table delete helper when deleting the policy table.
+
+(cherry picked from commit a291a5d2f03711c2c6b0079128626204229ad79e)
+---
+ src/firewall/core/nftables.py | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/firewall/core/nftables.py b/src/firewall/core/nftables.py
+index e3e06d75f663..2a13b2678a94 100644
+--- a/src/firewall/core/nftables.py
++++ b/src/firewall/core/nftables.py
+@@ -489,9 +489,9 @@ class nftables(object):
+                 if policy_key in self.rule_to_handle:
+                     rules.append(rule)
+ 
++            rules += self._build_delete_table_rules(TABLE_NAME_POLICY)
++
+             if TABLE_NAME_POLICY in self.created_tables["inet"]:
+-                rules.append({"delete": {"table": {"family": "inet",
+-                                                   "name": TABLE_NAME_POLICY}}})
+                 self.created_tables["inet"].remove(TABLE_NAME_POLICY)
+         else:
+             FirewallError(UNKNOWN_ERROR, "not implemented")
+-- 
+2.39.3
+

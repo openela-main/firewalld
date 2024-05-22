@@ -1,7 +1,7 @@
 Summary: A firewall daemon with D-Bus interface providing a dynamic firewall
 Name: firewalld
 Version: 0.9.11
-Release: 1%{?dist}
+Release: 4%{?dist}
 URL:     http://www.firewalld.org
 License: GPLv2+
 Source0: https://github.com/firewalld/firewalld/releases/download/v%{version}/firewalld-%{version}.tar.gz
@@ -15,6 +15,13 @@ Patch7:  0007-RHEL-only-default-to-CleanupModulesOnExit-yes.patch
 Patch8:  0008-v1.1.0-fix-ipset-reduce-cost-of-entry-overlap-detect.patch
 Patch9:  0009-v1.1.0-test-ipset-huge-set-of-entries-benchmark.patch
 Patch10: 0010-v1.1.0-fix-ipset-further-reduce-cost-of-entry-overla.patch
+Patch11: 0011-v1.1.0-fix-ipset-exception-on-overlap-checking-empty.patch
+Patch12: 0012-v1.1.0-test-ipset-verify-remove-entries-from-file.patch
+Patch13: 0013-v1.2.0-fix-ipset-fix-configuring-IP-range-for-ipsets.patch
+Patch14: 0014-v1.2.0-chore-nftables-add-delete-table-helper.patch
+Patch15: 0015-v1.2.0-fix-nftables-always-flush-main-table-on-start.patch
+Patch16: 0016-v1.2.0-test-CleanUpOnExit-verify-restart-does-not-du.patch
+Patch18: 0017-v1.2.0-chore-nftables-policy-use-delete-table-helper.patch
 
 BuildArch: noarch
 BuildRequires: autoconf
@@ -216,6 +223,15 @@ desktop-file-install --delete-original \
 %{_mandir}/man1/firewall-config*.1*
 
 %changelog
+* Fri Nov 03 2023 Eric Garver <egarver@redhat.com> - 0.9.11-4
+- fix(nftables): always flush main table on start
+
+* Fri Nov 03 2023 Eric Garver <egarver@redhat.com> - 0.9.11-3
+- fix(ipset): fix configuring IP range for ipsets with nftables
+
+* Fri Nov 03 2023 Eric Garver <egarver@redhat.com> - 0.9.11-2
+- fix(ipset): exception on overlap checking empty set
+
 * Tue Apr 18 2023 Eric Garver <egarver@redhat.com> - 0.9.11-1
 - rebase to v0.9.11
 

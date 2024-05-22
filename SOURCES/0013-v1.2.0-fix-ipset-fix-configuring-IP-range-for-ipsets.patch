@@ -1,0 +1,138 @@
+From 90412a5fae831dcb1a8c9d9f4a798efabcc46567 Mon Sep 17 00:00:00 2001
+From: Thomas Haller <thaller@redhat.com>
+Date: Tue, 11 Jul 2023 15:26:56 +0200
+Subject: [PATCH 13/17] v1.2.0: fix(ipset): fix configuring IP range for ipsets
+ with nftables
+
+Setting an IP range with nftables did not work:
+
+    firewall-cmd --permanent --delete-ipset=testipset || :
+    firewall-cmd --permanent --delete-zone=testzone || :
+
+    ENTRY=1.1.1.1-1.1.1.10
+
+    firewall-cmd --permanent --new-ipset=testipset --type=hash:ip
+    firewall-cmd --permanent --ipset=testipset --add-entry="$ENTRY"
+    firewall-cmd --permanent --info-ipset=testipset
+    firewall-cmd --permanent --new-zone=testzone
+    firewall-cmd --permanent --zone=testzone --add-rich-rule='rule family="ipv4" source ipset="testipset" service name="ssh" accept'
+
+    firewall-cmd --reload &
+
+This would generate the following JSON request:
+
+    {
+      "add": {
+        "element": {
+          "family": "inet",
+          "table": "firewalld",
+          "name": "testipset",
+          "elem": [
+            "1.1.1.1-1.1.1.10"
+          ]
+        }
+      }
+    }
+
+libnftables will try to resolve "1.1.1.1-1.1.1.10" via getaddrinfo().  Calling
+getaddrinfo() to resolve names is bound to fail, and it blocks the process for
+a very long time. libnftables should not block the calling process ([1]).
+
+We need to generate the correct JSON request, which is
+
+    {
+      "add": {
+        "element": {
+          "family": "inet",
+          "table": "firewalld",
+          "name": "testipset",
+          "elem": [
+            {
+              "range": [
+                "1.1.1.1",
+                "1.1.1.10"
+              ]
+            }
+          ]
+        }
+      }
+    }
+
+This is an ugly fix, because the parsing of ipset entries is duplicated
+and inconsistent.  A better solution for that shall follow.
+
+[1] https://marc.info/?l=netfilter-devel&m=168901121103612
+
+https://bugzilla.redhat.com/show_bug.cgi?id=2028748
+
+Fixes: 1582c5dd736a ('feat: nftables: convert to libnftables JSON interface')
+(cherry picked from commit 4db89e316f2d60f3cf856a7025a96a61e40b1e5a)
+---
+ src/firewall/core/nftables.py | 27 +++++++++++++++------------
+ src/tests/cli/firewall-cmd.at |  4 ++--
+ 2 files changed, 17 insertions(+), 14 deletions(-)
+
+diff --git a/src/firewall/core/nftables.py b/src/firewall/core/nftables.py
+index 19a649aaaa71..2764bcf93645 100644
+--- a/src/firewall/core/nftables.py
++++ b/src/firewall/core/nftables.py
+@@ -1850,19 +1850,22 @@ class nftables(object):
+                     fragment.append({"range": [port_str[:index], port_str[index+1:]]})
+ 
+             elif type_format[i] in ["ip", "net"]:
+-                try:
+-                    index = entry_tokens[i].index("/")
+-                except ValueError:
+-                    addr = entry_tokens[i]
+-                    if "family" in obj.options and obj.options["family"] == "inet6":
+-                        addr = normalizeIP6(addr)
+-                    fragment.append(addr)
++                if '-' in entry_tokens[i]:
++                    fragment.append({"range": entry_tokens[i].split('-') })
+                 else:
+-                    addr = entry_tokens[i][:index]
+-                    if "family" in obj.options and obj.options["family"] == "inet6":
+-                        addr = normalizeIP6(addr)
+-                    fragment.append({"prefix": {"addr": addr,
+-                                                "len": int(entry_tokens[i][index+1:])}})
++                    try:
++                        index = entry_tokens[i].index("/")
++                    except ValueError:
++                        addr = entry_tokens[i]
++                        if "family" in obj.options and obj.options["family"] == "inet6":
++                            addr = normalizeIP6(addr)
++                        fragment.append(addr)
++                    else:
++                        addr = entry_tokens[i][:index]
++                        if "family" in obj.options and obj.options["family"] == "inet6":
++                            addr = normalizeIP6(addr)
++                        fragment.append({"prefix": {"addr": addr,
++                                                    "len": int(entry_tokens[i][index+1:])}})
+             else:
+                 fragment.append(entry_tokens[i])
+         return [{"concat": fragment}] if len(type_format) > 1 else fragment
+diff --git a/src/tests/cli/firewall-cmd.at b/src/tests/cli/firewall-cmd.at
+index 47bdd81f5194..c4ab3108d37c 100644
+--- a/src/tests/cli/firewall-cmd.at
++++ b/src/tests/cli/firewall-cmd.at
+@@ -908,7 +908,7 @@ FWD_START_TEST([ipset])
+ 
+     dnl multi dimensional sets
+     FWD_CHECK([--permanent --new-ipset=foobar --type=hash:ip,port], 0, ignore)
+-    FWD_CHECK([--permanent --ipset=foobar --add-entry=10.10.10.10,1234], 0, ignore)
++    FWD_CHECK([--permanent --ipset=foobar --add-entry=10.10.10.10-10.10.10.12,1234], 0, ignore)
+     FWD_CHECK([--permanent --ipset=foobar --add-entry=10.10.10.10,2000-2100], 0, ignore)
+     FWD_RELOAD
+     NFT_LIST_SET([foobar], 0, [dnl
+@@ -916,7 +916,7 @@ FWD_START_TEST([ipset])
+             set foobar {
+                 type ipv4_addr . inet_proto . inet_service
+                 flags interval
+-                elements = { 10.10.10.10 . tcp . 1234,
++                elements = { 10.10.10.10-10.10.10.12 . tcp . 1234,
+                              10.10.10.10 . tcp . 2000-2100 }
+             }
+         }
+-- 
+2.39.3
+
