@@ -1,0 +1,238 @@
+From 45ebffc5521db62064f365f4a9100b4ab40dce90 Mon Sep 17 00:00:00 2001
+From: Thomas Haller <thaller@redhat.com>
+Date: Wed, 13 Dec 2023 20:35:51 +0100
+Subject: [PATCH 26/26] v2.2.0: improvement(rich): support "burst" attribute to
+ limit in rich rules
+
+For iptables, this is `-m limit --limit rate/suffix --limit-burst burst`.
+
+For nftables, this is `limit rate [over] packet_number / TIME_UNIT [burst packet_number packets]`
+
+Not implemented in `src/firewall-config.in`.
+
+https://issues.redhat.com/browse/RHEL-9316
+(cherry picked from commit 58dfdcafabaaad639bfcf389ebbd6b2c242965a4)
+---
+ src/firewall/core/io/policy.py |  9 +++--
+ src/firewall/core/io/zone.py   |  1 +
+ src/firewall/core/ipXtables.py |  9 +++--
+ src/firewall/core/nftables.py  | 12 +++++--
+ src/firewall/core/rich.py      | 63 ++++++++++++++++++++++++++++++----
+ src/tests/cli/firewall-cmd.at  |  4 +--
+ 6 files changed, 82 insertions(+), 16 deletions(-)
+
+diff --git a/src/firewall/core/io/policy.py b/src/firewall/core/io/policy.py
+index 66535e0d0368..c732324c441b 100644
+--- a/src/firewall/core/io/policy.py
++++ b/src/firewall/core/io/policy.py
+@@ -278,7 +278,7 @@ def common_startElement(obj, name, attrs):
+             obj._rule_error = True
+             return True
+         value = attrs["value"]
+-        obj._limit_ok.limit = rich.Rich_Limit(value)
++        obj._limit_ok.limit = rich.Rich_Limit(value, attrs.get("burst"))
+     else:
+         return False
+ 
+@@ -374,7 +374,11 @@ def common_check_config(obj, config, item, all_config):
+ 
+ 
+ def _handler_add_rich_limit(handler, limit):
+-    handler.simpleElement("limit", {"value": limit.value})
++    d = {"value": limit.value}
++    burst = limit.burst
++    if burst is not None:
++        d["burst"] = burst
++    handler.simpleElement("limit", d)
+ 
+ 
+ def common_writer(obj, handler):
+@@ -652,6 +656,7 @@ class Policy(IO_Object):
+         "destination": [ "address", "invert", "ipset" ],
+         "log": [ "prefix", "level" ],
+         "reject": [ "type" ],
++        "limit": ["burst"],
+         }
+ 
+     def __init__(self):
+diff --git a/src/firewall/core/io/zone.py b/src/firewall/core/io/zone.py
+index 0c419ee0f2bd..753036e4fb55 100644
+--- a/src/firewall/core/io/zone.py
++++ b/src/firewall/core/io/zone.py
+@@ -94,6 +94,7 @@ class Zone(IO_Object):
+         "destination": [ "address", "invert", "ipset" ],
+         "log": [ "prefix", "level" ],
+         "reject": [ "type" ],
++        "limit": ["burst"],
+         }
+ 
+     @staticmethod
+diff --git a/src/firewall/core/ipXtables.py b/src/firewall/core/ipXtables.py
+index 401377104ce1..0f9a1518380e 100644
+--- a/src/firewall/core/ipXtables.py
++++ b/src/firewall/core/ipXtables.py
+@@ -967,9 +967,12 @@ class ip4tables(object):
+         return rules
+ 
+     def _rule_limit(self, limit):
+-        if limit:
+-            return [ "-m", "limit", "--limit", limit.value ]
+-        return []
++        if not limit:
++            return []
++        s = ["-m", "limit", "--limit", limit.value]
++        if limit.burst is not None:
++            s += ["--limit-burst", limit.burst]
++        return s
+ 
+     def _rich_rule_chain_suffix(self, rich_rule):
+         if type(rich_rule.element) in [Rich_Masquerade, Rich_ForwardPort, Rich_IcmpBlock]:
+diff --git a/src/firewall/core/nftables.py b/src/firewall/core/nftables.py
+index f24095ce729c..834176c09cbc 100644
+--- a/src/firewall/core/nftables.py
++++ b/src/firewall/core/nftables.py
+@@ -1073,8 +1073,16 @@ class nftables(object):
+ 
+         rate, duration = limit.value_parse()
+ 
+-        return {"limit": {"rate": rate,
+-                          "per": rich_to_nft[duration]}}
++        d = {
++            "rate": rate,
++            "per": rich_to_nft[duration],
++        }
++
++        burst = limit.burst_parse()
++        if burst is not None:
++            d["burst"] = burst
++
++        return {"limit": d}
+ 
+     def _rich_rule_chain_suffix(self, rich_rule):
+         if type(rich_rule.element) in [Rich_Masquerade, Rich_ForwardPort, Rich_IcmpBlock]:
+diff --git a/src/firewall/core/rich.py b/src/firewall/core/rich.py
+index a77f2b4aa495..c561709af0e2 100644
+--- a/src/firewall/core/rich.py
++++ b/src/firewall/core/rich.py
+@@ -238,11 +238,13 @@ DURATION_TO_MULT = {
+ }
+ 
+ class Rich_Limit(object):
+-    def __init__(self, value):
++    def __init__(self, value, burst=None):
+         self.value = value
++        self.burst = burst
+ 
+     def check(self):
+         self.value_parse()
++        self.burst_parse()
+ 
+     @property
+     def value(self):
+@@ -263,6 +265,24 @@ class Rich_Limit(object):
+         if getattr(self, "_value", None) != v:
+             self._value = v
+ 
++    @property
++    def burst(self):
++        return self._burst
++
++    @burst.setter
++    def burst(self, burst):
++        if burst is None:
++            self._burst = None
++            return
++        try:
++            b = self._burst_parse(burst)
++        except FirewallError:
++            b = burst
++        else:
++            b = str(burst)
++        if getattr(self, "_burst", None) != b:
++            self._burst = b
++
+     @staticmethod
+     def _value_parse(value):
+         splits = None
+@@ -294,8 +314,28 @@ class Rich_Limit(object):
+     def value_parse(self):
+         return self._value_parse(self._value)
+ 
++    @staticmethod
++    def _burst_parse(burst):
++        if burst is None:
++            return None
++        try:
++            b = int(burst)
++        except:
++            raise FirewallError(errors.INVALID_LIMIT, burst)
++
++        if b < 1 or b > 10_000_000:
++            raise FirewallError(errors.INVALID_LIMIT, burst)
++
++        return b
++
++    def burst_parse(self):
++        return self._burst_parse(self._burst)
++
+     def __str__(self):
+-        return f'limit value="{self._value}"'
++        s = f'limit value="{self._value}"'
++        if self._burst is not None:
++            s += f" burst={self._burst}"
++        return s
+ 
+ class Rich_Rule(object):
+     priority_min = -32768
+@@ -368,7 +408,7 @@ class Rich_Rule(object):
+                                      'invert', 'value',
+                                      'port', 'protocol', 'to-port', 'to-addr',
+                                      'name', 'prefix', 'level', 'type',
+-                                     'set']:
++                                     'set', 'burst']:
+                     raise FirewallError(errors.INVALID_RULE, "bad attribute '%s'" % attr_name)
+             else:             # element
+                 if element in ['rule', 'source', 'destination', 'protocol',
+@@ -554,11 +594,20 @@ class Rich_Rule(object):
+                     attrs.clear()
+                     index = index -1 # return token to input
+             elif in_element == 'limit':
+-                if attr_name == 'value':
+-                    attrs['limit'] = Rich_Limit(attr_value)
+-                    in_elements.pop() # limit
++                if attr_name in ["value", "burst"]:
++                    attrs[f"limit.{attr_name}"] = attr_value
+                 else:
+-                    raise FirewallError(errors.INVALID_RULE, "invalid 'limit' element")
++                    if "limit.value" not in attrs:
++                        raise FirewallError(
++                            errors.INVALID_RULE, "invalid 'limit' element"
++                        )
++                    attrs["limit"] = Rich_Limit(
++                        attrs["limit.value"], attrs.get("limit.burst")
++                    )
++                    attrs.pop("limit.value", None)
++                    attrs.pop("limit.burst", None)
++                    in_elements.pop()  # limit
++                    index = index - 1  # return token to input
+ 
+             index = index + 1
+ 
+diff --git a/src/tests/cli/firewall-cmd.at b/src/tests/cli/firewall-cmd.at
+index c4ab3108d37c..6c69f0ccebd4 100644
+--- a/src/tests/cli/firewall-cmd.at
++++ b/src/tests/cli/firewall-cmd.at
+@@ -1356,8 +1356,8 @@ FWD_START_TEST([rich rules good])
+     rich_rule_test([rule protocol value="ah" reject])
+     rich_rule_test([rule protocol value="esp" accept])
+     rich_rule_test([rule protocol value="sctp" log])
+-    rich_rule_test([rule family="ipv4" source address="192.168.0.0/24" service name="tftp" log prefix="tftp: " level="info" limit value="1/m" accept])
+-    rich_rule_test([rule family="ipv4" source not address="192.168.0.0/24" service name="dns" log prefix="dns: " level="info" limit value="2/m" drop])
++    rich_rule_test([rule family="ipv4" source address="192.168.0.0/24" service name="tftp" log prefix="tftp: " level="info" limit value="1/m" burst=5 accept])
++    rich_rule_test([rule family="ipv4" source not address="192.168.0.0/24" service name="dns" log prefix="dns: " level="info" limit value="2/m" burst=5 drop])
+     IF_HOST_SUPPORTS_IPV6_RULES([
+     rich_rule_test([rule family="ipv6" source address="1:2:3:4:6::" service name="radius" log prefix="dns -- " level="info" limit value="3/m" reject type="icmp6-addr-unreachable" limit value="20/m"])
+     rich_rule_test([rule family="ipv6" source address="1:2:3:4:6::" port port="4011" protocol="tcp" log prefix="port 4011: " level="info" limit value="4/m" drop])
+-- 
+2.43.0
+

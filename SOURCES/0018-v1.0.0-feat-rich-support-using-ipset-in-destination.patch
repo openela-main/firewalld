@@ -1,0 +1,242 @@
+From 0715e07a68d50d33797a724d24157a96afee3de6 Mon Sep 17 00:00:00 2001
+From: Derek Dai <daiderek@gmail.com>
+Date: Tue, 10 Nov 2020 20:37:36 +0800
+Subject: [PATCH 18/26] v1.0.0: feat(rich): support using ipset in destination
+
+Fixes: #706
+Closes: #711
+(cherry picked from commit 286d00031f431f3c3d0f94028975a409e78be8c8)
+---
+ doc/xml/firewalld.richlanguage.xml |  2 +-
+ src/firewall/core/io/policy.py     | 21 ++++++++++----
+ src/firewall/core/io/zone.py       |  4 +--
+ src/firewall/core/ipXtables.py     | 25 +++++++++++------
+ src/firewall/core/nftables.py      |  7 ++++-
+ src/firewall/core/rich.py          | 44 ++++++++++++++++++++++--------
+ 6 files changed, 74 insertions(+), 29 deletions(-)
+
+diff --git a/doc/xml/firewalld.richlanguage.xml b/doc/xml/firewalld.richlanguage.xml
+index e336bfd0b464..19bd038fc1fd 100644
+--- a/doc/xml/firewalld.richlanguage.xml
++++ b/doc/xml/firewalld.richlanguage.xml
+@@ -129,7 +129,7 @@ source [not] address="address[/mask]"|mac="mac-address"|ipset="ipset"
+       <title>Destination</title>
+       <para>
+ 	<programlisting>
+-destination [not] address="address[/mask]"
++destination [not] address="address[/mask]"|ipset="ipset"
+ 	</programlisting>
+ 	With the destination address the target can be limited to the destination address. The destination address is using the same syntax as the source address.
+       </para>
+diff --git a/src/firewall/core/io/policy.py b/src/firewall/core/io/policy.py
+index c543aa1b42a6..3b951545e975 100644
+--- a/src/firewall/core/io/policy.py
++++ b/src/firewall/core/io/policy.py
+@@ -186,11 +186,18 @@ def common_startElement(obj, name, attrs):
+                         str(obj._rule))
+             return True
+         invert = False
++        address = None
++        if "address" in attrs:
++            address = attrs["address"]
++        ipset = None
++        if "ipset" in attrs:
++            ipset = attrs["ipset"]
+         if "invert" in attrs and \
+                 attrs["invert"].lower() in [ "yes", "true" ]:
+             invert = True
+-        obj._rule.destination = rich.Rich_Destination(attrs["address"],
+-                                                       invert)
++        obj._rule.destination = rich.Rich_Destination(address,
++                                                      ipset,
++                                                      invert)
+ 
+     elif name in [ "accept", "reject", "drop", "mark" ]:
+         if not obj._rule:
+@@ -447,7 +454,11 @@ def common_writer(obj, handler):
+ 
+         # destination
+         if rule.destination:
+-            attrs = { "address": rule.destination.addr }
++            attrs = { }
++            if rule.destination.addr:
++                attrs["address"] = rule.destination.addr
++            if rule.destination.ipset:
++                attrs["ipset"] = rule.destination.ipset
+             if rule.destination.invert:
+                 attrs["invert"] = "True"
+             handler.ignorableWhitespace("    ")
+@@ -607,7 +618,7 @@ class Policy(IO_Object):
+         "forward-port": [ "port", "protocol" ],
+         "rule": None,
+         "source": None,
+-        "destination": [ "address" ],
++        "destination": None,
+         "protocol": [ "value" ],
+         "source-port": [ "port", "protocol" ],
+         "log":  None,
+@@ -625,7 +636,7 @@ class Policy(IO_Object):
+         "forward-port": [ "to-port", "to-addr" ],
+         "rule": [ "family", "priority" ],
+         "source": [ "address", "mac", "invert", "family", "ipset" ],
+-        "destination": [ "invert" ],
++        "destination": [ "address", "invert", "ipset" ],
+         "log": [ "prefix", "level" ],
+         "reject": [ "type" ],
+         }
+diff --git a/src/firewall/core/io/zone.py b/src/firewall/core/io/zone.py
+index 4291ec9cba00..0c419ee0f2bd 100644
+--- a/src/firewall/core/io/zone.py
++++ b/src/firewall/core/io/zone.py
+@@ -73,7 +73,7 @@ class Zone(IO_Object):
+         "interface": [ "name" ],
+         "rule": None,
+         "source": None,
+-        "destination": [ "address" ],
++        "destination": None,
+         "protocol": [ "value" ],
+         "source-port": [ "port", "protocol" ],
+         "log":  None,
+@@ -91,7 +91,7 @@ class Zone(IO_Object):
+         "forward-port": [ "to-port", "to-addr" ],
+         "rule": [ "family", "priority" ],
+         "source": [ "address", "mac", "invert", "family", "ipset" ],
+-        "destination": [ "invert" ],
++        "destination": [ "address", "invert", "ipset" ],
+         "log": [ "prefix", "level" ],
+         "reject": [ "type" ],
+         }
+diff --git a/src/firewall/core/ipXtables.py b/src/firewall/core/ipXtables.py
+index cf6c6e03e7ad..401377104ce1 100644
+--- a/src/firewall/core/ipXtables.py
++++ b/src/firewall/core/ipXtables.py
+@@ -1093,15 +1093,22 @@ class ip4tables(object):
+             return []
+ 
+         rule_fragment = []
+-        if rich_dest.invert:
+-            rule_fragment.append("!")
+-        if check_single_address("ipv6", rich_dest.addr):
+-            rule_fragment += [ "-d", normalizeIP6(rich_dest.addr) ]
+-        elif check_address("ipv6", rich_dest.addr):
+-            addr_split = rich_dest.addr.split("/")
+-            rule_fragment += [ "-d", normalizeIP6(addr_split[0]) + "/" + addr_split[1] ]
+-        else:
+-            rule_fragment += [ "-d", rich_dest.addr ]
++        if rich_dest.addr:
++            if rich_dest.invert:
++                rule_fragment.append("!")
++            if check_single_address("ipv6", rich_dest.addr):
++                rule_fragment += [ "-d", normalizeIP6(rich_dest.addr) ]
++            elif check_address("ipv6", rich_dest.addr):
++                addr_split = rich_dest.addr.split("/")
++                rule_fragment += [ "-d", normalizeIP6(addr_split[0]) + "/" + addr_split[1] ]
++            else:
++                rule_fragment += [ "-d", rich_dest.addr ]
++        elif rich_dest.ipset:
++            rule_fragment += [ "-m", "set" ]
++            if rich_dest.invert:
++                rule_fragment.append("!")
++            flags = self._fw.zone._ipset_match_flags(rich_dest.ipset, "dst")
++            rule_fragment += [ "--match-set", rich_dest.ipset, flags ]
+ 
+         return rule_fragment
+ 
+diff --git a/src/firewall/core/nftables.py b/src/firewall/core/nftables.py
+index 2a13b2678a94..d238451ebd5d 100644
+--- a/src/firewall/core/nftables.py
++++ b/src/firewall/core/nftables.py
+@@ -1253,7 +1253,12 @@ class nftables(object):
+     def _rich_rule_destination_fragment(self, rich_dest):
+         if not rich_dest:
+             return {}
+-        return self._rule_addr_fragment("daddr", rich_dest.addr, invert=rich_dest.invert)
++        if rich_dest.addr:
++            address = rich_dest.addr
++        elif rich_dest.ipset:
++            address = "ipset:" + rich_dest.ipset
++
++        return self._rule_addr_fragment("daddr", address, invert=rich_dest.invert)
+ 
+     def _rich_rule_source_fragment(self, rich_source):
+         if not rich_source:
+diff --git a/src/firewall/core/rich.py b/src/firewall/core/rich.py
+index 03bc194c2b28..6a03eeca5d8a 100644
+--- a/src/firewall/core/rich.py
++++ b/src/firewall/core/rich.py
+@@ -63,13 +63,27 @@ class Rich_Source(object):
+                                 "no address, mac and ipset")
+ 
+ class Rich_Destination(object):
+-    def __init__(self, addr, invert=False):
++    def __init__(self, addr, ipset, invert=False):
+         self.addr = addr
++        if self.addr == "":
++            self.addr = None
++        self.ipset = ipset
++        if self.ipset == "":
++            self.ipset = None
+         self.invert = invert
++        if self.addr is None and self.ipset is None:
++            raise FirewallError(errors.INVALID_RULE,
++                                "no address and ipset")
+ 
+     def __str__(self):
+-        return 'destination %saddress="%s"' % ("not " if self.invert else "",
+-                                               self.addr)
++        ret = 'destination%s ' % (" NOT" if self.invert else "")
++        if self.addr is not None:
++            return ret + 'address="%s"' % self.addr
++        elif self.ipset is not None:
++            return ret + 'ipset="%s"' % self.ipset
++        else:
++            raise FirewallError(errors.INVALID_RULE,
++                                "no address and ipset")
+ 
+ class Rich_Service(object):
+     def __init__(self, name):
+@@ -404,12 +418,12 @@ class Rich_Rule(object):
+                     attrs.clear()
+                     index = index -1 # return token to input
+             elif in_element == 'destination':
+-                if attr_name in ['address', 'invert']:
++                if attr_name in ['address', 'ipset', 'invert']:
+                     attrs[attr_name] = attr_value
+                 elif element in ['not', 'NOT']:
+                     attrs['invert'] = True
+                 else:
+-                    self.destination = Rich_Destination(attrs.get('address'), attrs.get('invert'))
++                    self.destination = Rich_Destination(attrs.get('address'), attrs.get('ipset'), attrs.get('invert', False))
+                     in_elements.pop() # destination
+                     attrs.clear()
+                     index = index -1 # return token to input
+@@ -587,12 +601,20 @@ class Rich_Rule(object):
+ 
+         # destination
+         if self.destination is not None:
+-            if self.family is None:
+-                raise FirewallError(errors.INVALID_FAMILY)
+-            if self.destination.addr is None or \
+-                    not functions.check_address(self.family,
+-                                                self.destination.addr):
+-                raise FirewallError(errors.INVALID_ADDR, str(self.destination.addr))
++            if self.destination.addr is not None:
++                if self.family is None:
++                    raise FirewallError(errors.INVALID_FAMILY)
++                if self.destination.ipset is not None:
++                    raise FirewallError(errors.INVALID_DESTINATION, "address and ipset")
++                if not functions.check_address(self.family, self.destination.addr):
++                    raise FirewallError(errors.INVALID_ADDR, str(self.destination.addr))
++
++            elif self.destination.ipset is not None:
++                if not check_ipset_name(self.destination.ipset):
++                    raise FirewallError(errors.INVALID_IPSET, str(self.destination.ipset))
++
++            else:
++                raise FirewallError(errors.INVALID_RULE, "invalid destination")
+ 
+         # service
+         if type(self.element) == Rich_Service:
+-- 
+2.43.0
+

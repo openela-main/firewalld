@@ -1,0 +1,189 @@
+From 2844fedea7b0c65d864f9960b513150c4468adb2 Mon Sep 17 00:00:00 2001
+From: Thomas Haller <thaller@redhat.com>
+Date: Wed, 13 Dec 2023 19:42:37 +0100
+Subject: [PATCH 25/26] v2.2.0: improvement(rich): add Rich_Limit.value_parse()
+ and normalize value
+
+Instead of duplicating the parsing, add a Rich_Limit.value_parse()
+function that can be used to "understand" the value string.
+
+Note that already previously, Rich_Limit.__init__() would normalize the
+value (e.g. modify "/minute" to "/m"). Go one step further with this.
+Now parse and stringify the value, so that it is normalized. Invalid
+values are left unnormalized, and Rich_Limit.__init__() still does not
+fail the operation (like before). For that we have check().
+
+This normalization matters. For example, the parser is (rightfully)
+graceful and will accept 'limit value="1 /m"'. If we add two rules
+that are identical, except for the white space, we want that the
+normalize string is identical. That's useful, because the normalized
+string of a rule is used as identity for the rule.
+
+(cherry picked from commit 8d2f9502db98b349cabf76bb9c0a303fe6e3512a)
+---
+ src/firewall-config.in        |  6 +--
+ src/firewall/core/nftables.py |  9 ++---
+ src/firewall/core/rich.py     | 76 ++++++++++++++++++++++-------------
+ 3 files changed, 53 insertions(+), 38 deletions(-)
+
+diff --git a/src/firewall-config.in b/src/firewall-config.in
+index f91e945ca7de..e4fbb029ac6d 100755
+--- a/src/firewall-config.in
++++ b/src/firewall-config.in
+@@ -3245,7 +3245,7 @@ class FirewallConfig(object):
+ 
+                 if old_obj.action.limit:
+                     self.richRuleDialogActionLimitCheck.set_active(True)
+-                    (rate, duration) = old_obj.action.limit.value.split("/")
++                    (rate, duration) = old_obj.action.limit.value_parse()
+                     self.richRuleDialogActionLimitRateEntry.set_text(rate)
+                     combobox_select_text( \
+                         self.richRuleDialogActionLimitDurationCombobox,
+@@ -3288,7 +3288,7 @@ class FirewallConfig(object):
+                                      loglevel[log_level])
+                 if old_obj.log.limit:
+                     self.richRuleDialogLogLimitCheck.set_active(True)
+-                    (rate, duration) = old_obj.log.limit.value.split("/")
++                    (rate, duration) = old_obj.log.limit.value_parse()
+                     self.richRuleDialogLogLimitRateEntry.set_text(rate)
+                     combobox_select_text( \
+                         self.richRuleDialogLogLimitDurationCombobox,
+@@ -3299,7 +3299,7 @@ class FirewallConfig(object):
+                 self.richRuleDialogAuditCheck.set_active(True)
+                 if old_obj.audit.limit:
+                     self.richRuleDialogAuditLimitCheck.set_active(True)
+-                    (rate, duration) = old_obj.audit.limit.value.split("/")
++                    (rate, duration) = old_obj.audit.limit.value_parse()
+                     self.richRuleDialogAuditLimitRateEntry.set_text(rate)
+                     combobox_select_text( \
+                         self.richRuleDialogAuditLimitDurationCombobox,
+diff --git a/src/firewall/core/nftables.py b/src/firewall/core/nftables.py
+index 67fb6457e86c..f24095ce729c 100644
+--- a/src/firewall/core/nftables.py
++++ b/src/firewall/core/nftables.py
+@@ -1071,13 +1071,10 @@ class nftables(object):
+             "d" : "day",
+         }
+ 
+-        try:
+-            i = limit.value.index("/")
+-        except ValueError:
+-            raise FirewallError(INVALID_RULE, "Expected '/' in limit")
++        rate, duration = limit.value_parse()
+ 
+-        return {"limit": {"rate": int(limit.value[0:i]),
+-                          "per": rich_to_nft[limit.value[i+1]]}}
++        return {"limit": {"rate": rate,
++                          "per": rich_to_nft[duration]}}
+ 
+     def _rich_rule_chain_suffix(self, rich_rule):
+         if type(rich_rule.element) in [Rich_Masquerade, Rich_ForwardPort, Rich_IcmpBlock]:
+diff --git a/src/firewall/core/rich.py b/src/firewall/core/rich.py
+index b150a0dca402..a77f2b4aa495 100644
+--- a/src/firewall/core/rich.py
++++ b/src/firewall/core/rich.py
+@@ -230,54 +230,72 @@ class Rich_Mark(object):
+                 # value is uint32
+                 raise FirewallError(errors.INVALID_MARK, x)
+ 
++DURATION_TO_MULT = {
++    "s": 1,
++    "m": 60,
++    "h": 60 * 60,
++    "d": 24 * 60 * 60,
++}
++
+ class Rich_Limit(object):
+     def __init__(self, value):
+         self.value = value
+-        if "/" in self.value:
+-            splits = self.value.split("/")
+-            if len(splits) == 2 and \
+-               splits[1] in [ "second", "minute", "hour", "day" ]:
+-                self.value = "%s/%s" % (splits[0], splits[1][:1])
+ 
+     def check(self):
++        self.value_parse()
++
++    @property
++    def value(self):
++        return self._value
++
++    @value.setter
++    def value(self, value):
++        if value is None:
++            self._value = None
++            return
++        try:
++            rate, duration = self._value_parse(value)
++        except FirewallError:
++            # The value is invalid. We cannot normalize it.
++            v = value
++        else:
++            v = f"{rate}/{duration}"
++        if getattr(self, "_value", None) != v:
++            self._value = v
++
++    @staticmethod
++    def _value_parse(value):
+         splits = None
+-        if "/" in self.value:
+-            splits = self.value.split("/")
++        if "/" in value:
++            splits = value.split("/")
+         if not splits or len(splits) != 2:
+-            raise FirewallError(errors.INVALID_LIMIT, self.value)
++            raise FirewallError(errors.INVALID_LIMIT, value)
+         (rate, duration) = splits
+         try:
+             rate = int(rate)
+         except:
+-            raise FirewallError(errors.INVALID_LIMIT, self.value)
++            raise FirewallError(errors.INVALID_LIMIT, value)
+ 
+-        if rate < 1 or duration not in [ "s", "m", "h", "d" ]:
+-            raise FirewallError(errors.INVALID_LIMIT, self.value)
++        if duration in ["second", "minute", "hour", "day"]:
++            duration = duration[:1]
+ 
+-        mult = 1
+-        if duration == "s":
+-            mult = 1
+-        elif duration == "m":
+-            mult = 60
+-        elif duration == "h":
+-            mult = 60*60
+-        elif duration == "d":
+-            mult = 24*60*60
++        if rate < 1 or duration not in ["s", "m", "h", "d"]:
++            raise FirewallError(errors.INVALID_LIMIT, value)
+ 
+-        if 10000 * mult // rate == 0:
+-            raise FirewallError(errors.INVALID_LIMIT,
+-                                "%s too fast" % self.value)
++        if 10000 * DURATION_TO_MULT[duration] // rate == 0:
++            raise FirewallError(errors.INVALID_LIMIT, "%s too fast" % (value,))
+ 
+         if rate == 1 and duration == "d":
+             # iptables (v1.4.21) doesn't accept 1/d
+-            raise FirewallError(errors.INVALID_LIMIT,
+-                                "%s too slow" % self.value)
++            raise FirewallError(errors.INVALID_LIMIT, "%s too slow" % (value,))
+ 
+-    def __str__(self):
+-        return 'limit value="%s"' % (self.value)
++        return rate, duration
+ 
+-    def command(self):
+-        return ''
++    def value_parse(self):
++        return self._value_parse(self._value)
++
++    def __str__(self):
++        return f'limit value="{self._value}"'
+ 
+ class Rich_Rule(object):
+     priority_min = -32768
+-- 
+2.43.0
+

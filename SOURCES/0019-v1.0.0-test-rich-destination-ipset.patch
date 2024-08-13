@@ -1,0 +1,60 @@
+From cf8a55d1fe769a9e4632fbccf5ae4738ab661421 Mon Sep 17 00:00:00 2001
+From: Eric Garver <eric@garver.life>
+Date: Thu, 12 Nov 2020 17:11:58 -0500
+Subject: [PATCH 19/26] v1.0.0: test(rich): destination ipset
+
+(cherry picked from commit f274bfd0f7bc0e466c42b732e03002e11e99ed88)
+---
+ src/tests/features/features.at               |  1 +
+ src/tests/features/rich_destination_ipset.at | 30 ++++++++++++++++++++
+ 2 files changed, 31 insertions(+)
+ create mode 100644 src/tests/features/rich_destination_ipset.at
+
+diff --git a/src/tests/features/features.at b/src/tests/features/features.at
+index 2340853aeca7..381bf6dba0e4 100644
+--- a/src/tests/features/features.at
++++ b/src/tests/features/features.at
+@@ -13,3 +13,4 @@ m4_include([features/rich_rules.at])
+ m4_include([features/icmp_blocks.at])
+ m4_include([features/rpfilter.at])
+ m4_include([features/zone_combine.at])
++m4_include([features/rich_destination_ipset.at])
+diff --git a/src/tests/features/rich_destination_ipset.at b/src/tests/features/rich_destination_ipset.at
+new file mode 100644
+index 000000000000..c07809141851
+--- /dev/null
++++ b/src/tests/features/rich_destination_ipset.at
+@@ -0,0 +1,30 @@
++FWD_START_TEST([rich destination ipset])
++AT_KEYWORDS(rich ipset)
++
++FWD_CHECK([--permanent --new-ipset=foobar --type=hash:ip], 0, [ignore])
++FWD_RELOAD
++
++FWD_CHECK([--permanent --add-rich-rule='rule family=ipv4 destination ipset=foobar accept'], 0, [ignore])
++FWD_CHECK([            --add-rich-rule='rule family=ipv4 destination ipset=foobar accept'], 0, [ignore])
++NFT_LIST_RULES([inet], [filter_IN_public_allow], 0, [dnl
++    table inet firewalld {
++        chain filter_IN_public_allow {
++            tcp dport 22 ct state new,untracked accept
++            ip6 daddr fe80::/64 udp dport 546 ct state new,untracked accept
++            ip daddr @foobar accept
++        }
++    }
++])
++IPTABLES_LIST_RULES([filter], [IN_public_allow], 0, [dnl
++    ACCEPT tcp -- 0.0.0.0/0 0.0.0.0/0 tcp dpt:22 ctstate NEW,UNTRACKED
++    ACCEPT all -- 0.0.0.0/0 0.0.0.0/0 match-set foobar dst
++])
++
++dnl negative tests
++FWD_CHECK([--permanent --add-rich-rule='rule family=ipv4 destination bogus=foobar accept'], 122, [ignore], [ignore])
++FWD_CHECK([            --add-rich-rule='rule family=ipv4 destination bogus=foobar accept'], 122, [ignore], [ignore])
++FWD_CHECK([--permanent --add-rich-rule='rule family=ipv4 destination address=10.0.0.1 ipset=foobar accept'], 121, [ignore], [ignore])
++FWD_CHECK([            --add-rich-rule='rule family=ipv4 destination address=10.0.0.1 ipset=foobar accept'], 121, [ignore], [ignore])
++
++FWD_END_TEST([-e '/ERROR: INVALID_RULE: bad attribute/d'dnl
++              -e '/ERROR: INVALID_DESTINATION: address and ipset/d'])
+-- 
+2.43.0
+

@@ -1,0 +1,131 @@
+From b18ab581731a302ddba0428b685360d315293e73 Mon Sep 17 00:00:00 2001
+From: Thomas Haller <thaller@redhat.com>
+Date: Wed, 29 Nov 2023 17:02:07 +0100
+Subject: [PATCH 21/26] v2.1.0: feat(icmp): add ICMPv6 Multicast Listener
+ Discovery (MLD) types
+
+Note that ip6tables does not support these ICMPv6 types. Currently,
+the name of the ICMP types in firewalld must correspond to the names
+in iptables. As ip6tables doesn't support it, it does not. If ip6tables
+adds support for "mld-listener-query", but calls it differently, we have
+a problem. Nothing that can be done about that.
+
+`man nft` also lists an alias "mld-listener-reduction" (for
+"mld-listener-done", type 132). That alias is not supported. Use the
+name as from RFC 4890.
+
+(cherry picked from commit dd88bbf812e0a50766b69c2bf12470ecf9d2466a)
+---
+ config/Makefile.am                        | 4 ++++
+ config/icmptypes/mld-listener-done.xml    | 7 +++++++
+ config/icmptypes/mld-listener-query.xml   | 7 +++++++
+ config/icmptypes/mld-listener-report.xml  | 7 +++++++
+ config/icmptypes/mld2-listener-report.xml | 7 +++++++
+ po/POTFILES.in                            | 4 ++++
+ src/firewall/core/nftables.py             | 4 ++++
+ 7 files changed, 40 insertions(+)
+ create mode 100644 config/icmptypes/mld-listener-done.xml
+ create mode 100644 config/icmptypes/mld-listener-query.xml
+ create mode 100644 config/icmptypes/mld-listener-report.xml
+ create mode 100644 config/icmptypes/mld2-listener-report.xml
+
+diff --git a/config/Makefile.am b/config/Makefile.am
+index f844a5a00e2f..a11c6abae583 100644
+--- a/config/Makefile.am
++++ b/config/Makefile.am
+@@ -83,6 +83,10 @@ CONFIG_FILES = \
+ 	icmptypes/host-unknown.xml \
+ 	icmptypes/host-unreachable.xml \
+ 	icmptypes/ip-header-bad.xml \
++	icmptypes/mld-listener-done.xml \
++	icmptypes/mld-listener-query.xml \
++	icmptypes/mld-listener-report.xml \
++	icmptypes/mld2-listener-report.xml \
+ 	icmptypes/neighbour-advertisement.xml \
+ 	icmptypes/neighbour-solicitation.xml \
+ 	icmptypes/network-prohibited.xml \
+diff --git a/config/icmptypes/mld-listener-done.xml b/config/icmptypes/mld-listener-done.xml
+new file mode 100644
+index 000000000000..09b8bbba5b90
+--- /dev/null
++++ b/config/icmptypes/mld-listener-done.xml
+@@ -0,0 +1,7 @@
++<?xml version="1.0" encoding="utf-8"?>
++<icmptype>
++  <short>MLD Listener Done</short>
++  <description>ICMPv6 Link-Local Multicast Listener Discovery (MDL) of type Multicast Listener Done (type 132) (RFC 4890 section 4.4.1). Also known as mld-listener-reduction to nft.</description>
++  <destination ipv4="no"/>
++  <destination ipv6="yes"/>
++</icmptype>
+diff --git a/config/icmptypes/mld-listener-query.xml b/config/icmptypes/mld-listener-query.xml
+new file mode 100644
+index 000000000000..418685578d1d
+--- /dev/null
++++ b/config/icmptypes/mld-listener-query.xml
+@@ -0,0 +1,7 @@
++<?xml version="1.0" encoding="utf-8"?>
++<icmptype>
++  <short>MLD Listener Query</short>
++  <description>ICMPv6 Link-Local Multicast Listener Discovery (MDL) of type Multicast Listener Query (type 130) (RFC 4890 section 4.4.1).</description>
++  <destination ipv4="no"/>
++  <destination ipv6="yes"/>
++</icmptype>
+diff --git a/config/icmptypes/mld-listener-report.xml b/config/icmptypes/mld-listener-report.xml
+new file mode 100644
+index 000000000000..98fb4161b298
+--- /dev/null
++++ b/config/icmptypes/mld-listener-report.xml
+@@ -0,0 +1,7 @@
++<?xml version="1.0" encoding="utf-8"?>
++<icmptype>
++  <short>MLD Listener Report</short>
++  <description>ICMPv6 Link-Local Multicast Listener Discovery (MDL) of type Multicast Listener Report (type 131) (RFC 4890 section 4.4.1).</description>
++  <destination ipv4="no"/>
++  <destination ipv6="yes"/>
++</icmptype>
+diff --git a/config/icmptypes/mld2-listener-report.xml b/config/icmptypes/mld2-listener-report.xml
+new file mode 100644
+index 000000000000..faee68c95b20
+--- /dev/null
++++ b/config/icmptypes/mld2-listener-report.xml
+@@ -0,0 +1,7 @@
++<?xml version="1.0" encoding="utf-8"?>
++<icmptype>
++  <short>MLDv2 Multicast Listener Report</short>
++  <description>ICMPv6 Link-Local Multicast Listener Discovery (MDLv2) of type Multicast Listener Report (type 143) (RFC 4890 section 4.4.1).</description>
++  <destination ipv4="no"/>
++  <destination ipv6="yes"/>
++</icmptype>
+diff --git a/po/POTFILES.in b/po/POTFILES.in
+index 249cff8d0d2f..3bb71fd3d332 100644
+--- a/po/POTFILES.in
++++ b/po/POTFILES.in
+@@ -15,6 +15,10 @@ config/icmptypes/host-redirect.xml
+ config/icmptypes/host-unknown.xml
+ config/icmptypes/host-unreachable.xml
+ config/icmptypes/ip-header-bad.xml
++config/icmptypes/mld-listener-done.xml
++config/icmptypes/mld-listener-query.xml
++config/icmptypes/mld-listener-report.xml
++config/icmptypes/mld2-listener-report.xml
+ config/icmptypes/neighbour-advertisement.xml
+ config/icmptypes/neighbour-solicitation.xml
+ config/icmptypes/network-prohibited.xml
+diff --git a/src/firewall/core/nftables.py b/src/firewall/core/nftables.py
+index d238451ebd5d..67fb6457e86c 100644
+--- a/src/firewall/core/nftables.py
++++ b/src/firewall/core/nftables.py
+@@ -140,6 +140,10 @@ ICMP_TYPES_FRAGMENTS = {
+         "echo-reply":                   _icmp_types_fragments("icmpv6", "echo-reply"),
+         "echo-request":                 _icmp_types_fragments("icmpv6", "echo-request"),
+         "failed-policy":                _icmp_types_fragments("icmpv6", "destination-unreachable", 5),
++        "mld-listener-done":            _icmp_types_fragments("icmpv6", "mld-listener-done"),
++        "mld-listener-query":           _icmp_types_fragments("icmpv6", "mld-listener-query"),
++        "mld-listener-report":          _icmp_types_fragments("icmpv6", "mld-listener-report"),
++        "mld2-listener-report":         _icmp_types_fragments("icmpv6", "mld2-listener-report"),
+         "neighbour-advertisement":      _icmp_types_fragments("icmpv6", "nd-neighbor-advert"),
+         "neighbour-solicitation":       _icmp_types_fragments("icmpv6", "nd-neighbor-solicit"),
+         "no-route":                     _icmp_types_fragments("icmpv6", "destination-unreachable", 0),
+-- 
+2.43.0
+

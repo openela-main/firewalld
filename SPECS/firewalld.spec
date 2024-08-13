@@ -1,7 +1,7 @@
 Summary: A firewall daemon with D-Bus interface providing a dynamic firewall
 Name: firewalld
 Version: 0.9.11
-Release: 4%{?dist}
+Release: 8%{?dist}
 URL:     http://www.firewalld.org
 License: GPLv2+
 Source0: https://github.com/firewalld/firewalld/releases/download/v%{version}/firewalld-%{version}.tar.gz
@@ -21,7 +21,16 @@ Patch13: 0013-v1.2.0-fix-ipset-fix-configuring-IP-range-for-ipsets.patch
 Patch14: 0014-v1.2.0-chore-nftables-add-delete-table-helper.patch
 Patch15: 0015-v1.2.0-fix-nftables-always-flush-main-table-on-start.patch
 Patch16: 0016-v1.2.0-test-CleanUpOnExit-verify-restart-does-not-du.patch
-Patch18: 0017-v1.2.0-chore-nftables-policy-use-delete-table-helper.patch
+Patch17: 0017-v1.2.0-chore-nftables-policy-use-delete-table-helper.patch
+Patch18: 0018-v1.0.0-feat-rich-support-using-ipset-in-destination.patch
+Patch19: 0019-v1.0.0-test-rich-destination-ipset.patch
+Patch20: 0020-v1.0.0-test-rich-destination-ipset-verify-policy-sup.patch
+Patch21: 0021-v2.1.0-feat-icmp-add-ICMPv6-Multicast-Listener-Disco.patch
+Patch22: 0022-v2.1.0-fix-rich-validate-service-name-of-rich-rule.patch
+Patch23: 0023-v2.2.0-fix-rich-fix-range-check-for-large-rule-limit.patch
+Patch24: 0024-v2.2.0-improvement-policy-extract-helper-function-fo.patch
+Patch25: 0025-v2.2.0-improvement-rich-add-Rich_Limit.value_parse-a.patch
+Patch26: 0026-v2.2.0-improvement-rich-support-burst-attribute-to-l.patch
 
 BuildArch: noarch
 BuildRequires: autoconf
@@ -223,6 +232,18 @@ desktop-file-install --delete-original \
 %{_mandir}/man1/firewall-config*.1*
 
 %changelog
+* Thu Jun 13 2024 Eric Garver <egarver@redhat.com> - 0.9.11-8
+- feat(rich): support "burst" attribute to limit in rich rules
+
+* Thu Jun 13 2024 Eric Garver <egarver@redhat.com> - 0.9.11-7
+- fix(rich): validate service name of rich rule
+
+* Thu Jun 13 2024 Eric Garver <egarver@redhat.com> - 0.9.11-6
+- feat(icmp): add ICMPv6 Multicast Listener Discovery (MLD) types
+
+* Thu Jun 13 2024 Eric Garver <egarver@redhat.com> - 0.9.11-5
+- feat(rich): support using ipset in destination
+
 * Fri Nov 03 2023 Eric Garver <egarver@redhat.com> - 0.9.11-4
 - fix(nftables): always flush main table on start
 
