@@ -1,7 +1,7 @@
 Summary: A firewall daemon with D-Bus interface providing a dynamic firewall
 Name: firewalld
 Version: 0.9.11
-Release: 8%{?dist}
+Release: 9%{?dist}
 URL:     http://www.firewalld.org
 License: GPLv2+
 Source0: https://github.com/firewalld/firewalld/releases/download/v%{version}/firewalld-%{version}.tar.gz
@@ -31,6 +31,10 @@ Patch23: 0023-v2.2.0-fix-rich-fix-range-check-for-large-rule-limit.patch
 Patch24: 0024-v2.2.0-improvement-policy-extract-helper-function-fo.patch
 Patch25: 0025-v2.2.0-improvement-rich-add-Rich_Limit.value_parse-a.patch
 Patch26: 0026-v2.2.0-improvement-rich-support-burst-attribute-to-l.patch
+Patch27: 0027-v2.0.0-test-atlocal-pass-EBTABLES-to-testsuite.patch
+Patch28: 0028-v2.0.0-chore-direct-add-has_runtime_configuration.patch
+Patch29: 0029-v2.0.0-feat-direct-avoid-iptables-flush-if-using-nft.patch
+Patch30: 0030-v2.0.0-test-direct-avoid-iptables-flush-if-using-nft.patch
 
 BuildArch: noarch
 BuildRequires: autoconf
@@ -232,6 +236,9 @@ desktop-file-install --delete-original \
 %{_mandir}/man1/firewall-config*.1*
 
 %changelog
+* Fri Aug 02 2024 Eric Garver <egarver@redhat.com> - 0.9.11-9
+- feat(direct): avoid iptables flush if using nftables backend
+
 * Thu Jun 13 2024 Eric Garver <egarver@redhat.com> - 0.9.11-8
 - feat(rich): support "burst" attribute to limit in rich rules
 

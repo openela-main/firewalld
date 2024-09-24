@@ -1,0 +1,34 @@
+From f61b27ffc91da3d5e634a2d90edd164ac4102086 Mon Sep 17 00:00:00 2001
+From: Eric Garver <egarver@redhat.com>
+Date: Wed, 26 Jun 2024 11:13:00 -0400
+Subject: [PATCH 28/30] v2.0.0: chore(direct): add has_runtime_configuration()
+
+This is originally from cdd015475e83 ("fix(ipset): defer native ipset
+creation if nftables").
+---
+ src/firewall/core/fw_direct.py | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/src/firewall/core/fw_direct.py b/src/firewall/core/fw_direct.py
+index 76aeda9f19cb..a35ebce1f276 100644
+--- a/src/firewall/core/fw_direct.py
++++ b/src/firewall/core/fw_direct.py
+@@ -64,9 +64,14 @@ class FirewallDirect(object):
+     def set_permanent_config(self, obj):
+         self._obj = obj
+ 
+-    def has_configuration(self):
++    def has_runtime_configuration(self):
+         if len(self._chains) + len(self._rules) + len(self._passthroughs) > 0:
+             return True
++        return False
++
++    def has_configuration(self):
++        if self.has_runtime_configuration():
++            return True
+         if len(self._obj.get_all_chains()) + \
+            len(self._obj.get_all_rules()) + \
+            len(self._obj.get_all_passthroughs()) > 0:
+-- 
+2.43.0
+
