@@ -1,0 +1,69 @@
+From bf91ea35e7faf66484bdae7d0b3260c4717ee39a Mon Sep 17 00:00:00 2001
+From: Eric Garver <eric@garver.life>
+Date: Tue, 18 Jun 2024 16:20:06 -0400
+Subject: [PATCH 21/22] v2.2.0: test(nftables): table ownership
+
+Coverage: RHEL-17002
+(cherry picked from commit e7728b843c2ec3a61dbe436575c977e2ad9c8674)
+---
+ src/tests/features/features.at             |  1 +
+ src/tests/features/nftables_table_owner.at | 38 ++++++++++++++++++++++
+ 2 files changed, 39 insertions(+)
+ create mode 100644 src/tests/features/nftables_table_owner.at
+
+diff --git a/src/tests/features/features.at b/src/tests/features/features.at
+index 065cb2872e88..83ad9d122189 100644
+--- a/src/tests/features/features.at
++++ b/src/tests/features/features.at
+@@ -21,3 +21,4 @@ m4_include([features/ipset.at])
+ m4_include([features/reset_defaults.at])
+ m4_include([features/iptables_no_flush_on_shutdown.at])
+ m4_include([features/reloadpolicy.at])
++m4_include([features/nftables_table_owner.at])
+diff --git a/src/tests/features/nftables_table_owner.at b/src/tests/features/nftables_table_owner.at
+new file mode 100644
+index 000000000000..abc946da0ad7
+--- /dev/null
++++ b/src/tests/features/nftables_table_owner.at
+@@ -0,0 +1,38 @@
++m4_if(nftables, FIREWALL_BACKEND, [
++FWD_START_TEST([nftables table owner])
++AT_KEYWORDS(RHEL-17002)
++
++AT_CHECK([sed -i 's/^NftablesTableOwner=.*/NftablesTableOwner=yes/' ./firewalld.conf])
++FWD_RELOAD()
++
++AT_SKIP_IF([grep "Configuration has NftablesTableOwner=True, but it's not supported by nftables." ./firewalld.log])
++
++NS_CHECK([nft list table inet firewalld | TRIM_WHITESPACE | head -n 2], 0, [m4_strip([dnl
++  table inet firewalld { # progname firewalld
++    flags owner,persist
++])])
++
++dnl Test the transitions from On to Off
++dnl
++
++AT_CHECK([sed -i 's/^NftablesTableOwner=.*/NftablesTableOwner=no/' ./firewalld.conf])
++FWD_RELOAD()
++
++NS_CHECK([nft list table inet firewalld | TRIM_WHITESPACE | head -n 2], 0, [m4_strip([dnl
++  table inet firewalld {
++    chain mangle_PREROUTING {
++])])
++
++dnl Test the transitions from Off to On
++dnl
++
++AT_CHECK([sed -i 's/^NftablesTableOwner=.*/NftablesTableOwner=yes/' ./firewalld.conf])
++FWD_RELOAD()
++
++NS_CHECK([nft list table inet firewalld | TRIM_WHITESPACE | head -n 2], 0, [m4_strip([dnl
++  table inet firewalld { # progname firewalld
++    flags owner,persist
++])])
++
++FWD_END_TEST()
++])
+-- 
+2.43.5
+

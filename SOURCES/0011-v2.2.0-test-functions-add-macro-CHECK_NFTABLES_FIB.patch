@@ -1,0 +1,27 @@
+From 55e40954a8c596fabe03371e9a508d3518273ac1 Mon Sep 17 00:00:00 2001
+From: Eric Garver <eric@garver.life>
+Date: Tue, 14 May 2024 16:27:54 -0400
+Subject: [PATCH 11/22] v2.2.0: test(functions): add macro CHECK_NFTABLES_FIB
+
+(cherry picked from commit 0aeebef07bc57b1f56b107632cdfdd809384398c)
+---
+ src/tests/functions.at | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/src/tests/functions.at b/src/tests/functions.at
+index f454ca980046..65a4ce078e05 100644
+--- a/src/tests/functions.at
++++ b/src/tests/functions.at
+@@ -748,3 +748,9 @@ m4_define([CHECK_NM_CAPABILITY_OVS], [
+ m4_define([IF_BACKEND_IS_DEFAULT], [
+     m4_if(nftables, FIREWALL_BACKEND, [$1], [])
+ ])
++
++m4_define([CHECK_NFTABLES_FIB], [
++    m4_if(nftables, FIREWALL_BACKEND, [
++        IF_HOST_SUPPORTS_NFT_FIB([], [AT_SKIP_IF([:])])
++    ])
++])
+-- 
+2.43.5
+

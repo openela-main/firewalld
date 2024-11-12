@@ -1,0 +1,417 @@
+From ce75ad2920f457d5b2ce578ead5d8c64f0daa490 Mon Sep 17 00:00:00 2001
+From: Eric Garver <eric@garver.life>
+Date: Fri, 21 Jun 2024 17:38:29 -0400
+Subject: [PATCH 20/22] v2.2.0: feat(nftables): table ownership
+
+This allows using the nftables table flags "owner" and "persist". When
+these are in use ONLY firewalld will be able to change the firewalld
+table/rules. All other processes will be blocked. This enhances
+firewalld robustness by guaranteeing that firewalld's rules can not be
+modified without it's knowledge, e.g. by other entities.
+
+This also allows firewalld and nftables services to coexist. An "nft
+flush ruleset" will NOT flush the "firewalld" table.
+
+Fixes: RHEL-17002
+(cherry picked from commit becd083fc2905921651af73cb15ce8c9aba9203b)
+---
+ config/firewalld.conf                  |  8 +++
+ doc/xml/firewalld.conf.xml             | 13 ++++
+ doc/xml/firewalld.dbus.xml             | 11 ++++
+ src/firewall/config/__init__.py.in     |  1 +
+ src/firewall/core/fw.py                | 22 +++++++
+ src/firewall/core/io/firewalld_conf.py |  6 +-
+ src/firewall/core/nftables.py          | 83 ++++++++++++++++++++++----
+ src/firewall/server/config.py          | 16 +++--
+ src/tests/dbus/firewalld.conf.at       |  2 +
+ src/tests/regression/rhbz2222044.at    |  5 ++
+ 10 files changed, 150 insertions(+), 17 deletions(-)
+
+diff --git a/config/firewalld.conf b/config/firewalld.conf
+index cf95af3eea8e..28345a13d54e 100644
+--- a/config/firewalld.conf
++++ b/config/firewalld.conf
+@@ -93,3 +93,11 @@ ReloadPolicy=INPUT:DROP,FORWARD:DROP,OUTPUT:DROP
+ # internet.
+ # Defaults to "yes".
+ RFC3964_IPv4=yes
++
++# NftablesTableOwner
++# If set to yes, the generated nftables rule set will be owned exclusively by
++# firewalld. This prevents other entities from mistakenly (or maliciously)
++# modifying firewalld's rule set. If you intentionally modify firewalld's
++# rules, then you will have to set this to "no".
++# Defaults to "yes".
++NftablesTableOwner=yes
+diff --git a/doc/xml/firewalld.conf.xml b/doc/xml/firewalld.conf.xml
+index 4b9bfdad15be..cf7134c04012 100644
+--- a/doc/xml/firewalld.conf.xml
++++ b/doc/xml/firewalld.conf.xml
+@@ -247,6 +247,19 @@
+             </listitem>
+         </varlistentry>
+ 
++        <varlistentry>
++            <term><option>NftablesTableOwner</option></term>
++            <listitem>
++                <para>
++                  If set to yes, the generated nftables rule set will be owned exclusively by
++                  firewalld. This prevents other entities from mistakenly (or maliciously)
++                  modifying firewalld's rule set. If you intentionally modify firewalld's
++                  rules, then you will have to set this to "no".
++                  Defaults to "yes".
++                </para>
++            </listitem>
++        </varlistentry>
++
+     </variablelist>
+ 
+   </refsect1>
+diff --git a/doc/xml/firewalld.dbus.xml b/doc/xml/firewalld.dbus.xml
+index f04cf5ae757b..00d7e8fbe5b1 100644
+--- a/doc/xml/firewalld.dbus.xml
++++ b/doc/xml/firewalld.dbus.xml
+@@ -2905,6 +2905,17 @@
+               </para>
+             </listitem>
+           </varlistentry>
++          <varlistentry id="FirewallD1.config.Properties.NftablesTableOwner">
++            <term>NftablesTableOwner - s - (rw)</term>
++            <listitem>
++              <para>
++                If set to yes, the generated nftables rule set will be owned exclusively by
++                firewalld. This prevents other entities from mistakenly (or maliciously)
++                modifying firewalld's rule set. If you intentionally modify firewalld's
++                rules, then you will have to set this to "no".
++              </para>
++            </listitem>
++          </varlistentry>
+         </variablelist>
+       </refsect3>
+     </refsect2>
+diff --git a/src/firewall/config/__init__.py.in b/src/firewall/config/__init__.py.in
+index 2eda337e8180..16291fcf795a 100644
+--- a/src/firewall/config/__init__.py.in
++++ b/src/firewall/config/__init__.py.in
+@@ -138,3 +138,4 @@ FALLBACK_FLUSH_ALL_ON_RELOAD = True
+ FALLBACK_RELOAD_POLICY = "INPUT:DROP,FORWARD:DROP,OUTPUT:DROP"
+ FALLBACK_RFC3964_IPV4 = True
+ FALLBACK_ALLOW_ZONE_DRIFTING = False
++FALLBACK_NFTABLES_TABLE_OWNER = True
+diff --git a/src/firewall/core/fw.py b/src/firewall/core/fw.py
+index f91ff53fc37a..557b6e527dbd 100644
+--- a/src/firewall/core/fw.py
++++ b/src/firewall/core/fw.py
+@@ -119,6 +119,7 @@ class Firewall(object):
+         self._flush_all_on_reload = config.FALLBACK_FLUSH_ALL_ON_RELOAD
+         self._rfc3964_ipv4 = config.FALLBACK_RFC3964_IPV4
+         self._allow_zone_drifting = config.FALLBACK_ALLOW_ZONE_DRIFTING
++        self._nftables_table_owner = config.FALLBACK_NFTABLES_TABLE_OWNER
+ 
+         if self._offline:
+             self.ip4tables_enabled = False
+@@ -290,6 +291,17 @@ class Firewall(object):
+             log.debug1("ebtables-restore is not supporting the --noflush "
+                        "option, will therefore not be used")
+ 
++        self.nftables_backend.probe_support()
++
++        if (
++            self._nftables_table_owner
++            and not self.nftables_backend.supports_table_owner
++        ):
++            log.info1(
++                "Configuration has NftablesTableOwner=True, but it's "
++                "not supported by nftables. Table ownership will be disabled."
++            )
++
+     def _start_load_firewalld_conf(self):
+         # load firewalld config
+         log.debug1("Loading firewalld config file '%s'", config.FIREWALLD_CONF)
+@@ -378,6 +390,16 @@ class Firewall(object):
+                 log.debug1("RFC3964_IPv4 is set to '%s'",
+                            self._rfc3964_ipv4)
+ 
++            if self._firewalld_conf.get("NftablesTableOwner"):
++                value = self._firewalld_conf.get("NftablesTableOwner")
++                if value.lower() in ["no", "false"]:
++                    self._nftables_table_owner = False
++                else:
++                    self._nftables_table_owner = True
++                log.debug1(
++                    "NftablesTableOwner is set to '%s'", self._nftables_table_owner
++                )
++
+         self.config.set_firewalld_conf(copy.deepcopy(self._firewalld_conf))
+ 
+     def _start_load_lockdown_whitelist(self):
+diff --git a/src/firewall/core/io/firewalld_conf.py b/src/firewall/core/io/firewalld_conf.py
+index 20072e26cfcd..d5b47666c0f0 100644
+--- a/src/firewall/core/io/firewalld_conf.py
++++ b/src/firewall/core/io/firewalld_conf.py
+@@ -32,7 +32,7 @@ valid_keys = [ "DefaultZone", "MinimalMark", "CleanupOnExit",
+                "CleanupModulesOnExit", "Lockdown", "IPv6_rpfilter",
+                "IndividualCalls", "LogDenied", "AutomaticHelpers",
+                "FirewallBackend", "FlushAllOnReload", "RFC3964_IPv4",
+-               "AllowZoneDrifting", "ReloadPolicy" ]
++               "AllowZoneDrifting", "ReloadPolicy", "NftablesTableOwner" ]
+ 
+ class firewalld_conf(object):
+     def __init__(self, filename):
+@@ -81,6 +81,10 @@ class firewalld_conf(object):
+         self.set("ReloadPolicy", config.FALLBACK_RELOAD_POLICY)
+         self.set("RFC3964_IPv4", "yes" if config.FALLBACK_RFC3964_IPV4 else "no")
+         self.set("AllowZoneDrifting", "yes" if config.FALLBACK_ALLOW_ZONE_DRIFTING else "no")
++        self.set(
++            "NftablesTableOwner",
++            "yes" if config.FALLBACK_NFTABLES_TABLE_OWNER else "no",
++        )
+ 
+     def sanity_check(self):
+         if self.get("FirewallBackend") == "iptables" and self.get("IPv6_rpfilter") in (
+diff --git a/src/firewall/core/nftables.py b/src/firewall/core/nftables.py
+index 5a49b34e3a4f..8115bcb9d7f4 100644
+--- a/src/firewall/core/nftables.py
++++ b/src/firewall/core/nftables.py
+@@ -36,6 +36,7 @@ from nftables.nftables import Nftables
+ 
+ TABLE_NAME = "firewalld"
+ TABLE_NAME_POLICY = TABLE_NAME + "_" + "policy_drop"
++TABLE_NAME_PROBE = TABLE_NAME + "_" + "probe"
+ POLICY_CHAIN_PREFIX = "policy_"
+ 
+ # Map iptables (table, chain) to hooks and priorities.
+@@ -169,6 +170,7 @@ class nftables(object):
+     def __init__(self, fw):
+         self._fw = fw
+         self.restore_command_exists = True
++        self.supports_table_owner = False
+         self.available_tables = []
+         self.rule_to_handle = {}
+         self.rule_ref_count = {}
+@@ -180,6 +182,57 @@ class nftables(object):
+         self.nftables.set_echo_output(True)
+         self.nftables.set_handle_output(True)
+ 
++    def _probe_support_table_owner(self):
++        try:
++            rules = {
++                "nftables": [
++                    {"metainfo": {"json_schema_version": 1}},
++                    {
++                        "add": {
++                            "table": {
++                                "family": "inet",
++                                "name": TABLE_NAME_PROBE,
++                                "flags": ["owner", "persist"],
++                            }
++                        }
++                    },
++                ]
++            }
++
++            rc, output, _ = self.nftables.json_cmd(rules)
++            if rc:
++                raise ValueError("nftables probe table owner failed")
++
++            # old nftables versions would ignore table flags in JSON, so we
++            # must parse back and verify the flags are set.
++            rules = {
++                "nftables": [
++                    {"metainfo": {"json_schema_version": 1}},
++                    {"list": {"table": {"family": "inet", "name": TABLE_NAME_PROBE}}},
++                ]
++            }
++            self.nftables.set_echo_output(False)
++            rc, output, _ = self.nftables.json_cmd(rules)
++            self.nftables.set_echo_output(True)
++            flags = output["nftables"][1]["table"]["flags"]
++
++            self.set_rule(
++                {"delete": {"table": {"family": "inet", "name": TABLE_NAME_PROBE}}},
++                self._fw.get_log_denied(),
++            )
++
++            if "owner" not in flags or "persist" not in flags:
++                raise ValueError("nftables probe table owner failed")
++
++            log.debug2("nftables: probe_support(): owner flag is supported.")
++            self.supports_table_owner = True
++        except:
++            log.debug2("nftables: probe_support(): owner flag is NOT supported.")
++            self.supports_table_owner = False
++
++    def probe_support(self):
++        self._probe_support_table_owner()
++
+     def _run_replace_zone_source(self, rule, zone_source_index_cache):
+         for verb in ["add", "insert", "delete"]:
+             if verb in rule:
+@@ -401,16 +454,27 @@ class nftables(object):
+         # Tables always exist in nftables
+         return [table] if table else IPTABLES_TO_NFT_HOOK.keys()
+ 
++    def _build_add_table_rules(self, table):
++        rule = {"add": {"table": {"family": "inet", "name": table}}}
++
++        if (
++            table == TABLE_NAME
++            and self._fw._nftables_table_owner
++            and self.supports_table_owner
++        ):
++            rule["add"]["table"]["flags"] = ["owner", "persist"]
++
++        return [rule]
++
+     def _build_delete_table_rules(self, table):
+         # To avoid nftables returning ENOENT we always add the table before
+         # deleting to guarantee it will exist.
+         #
+         # In the future, this add+delete should be replaced with "destroy", but
+         # that verb is too new to rely upon.
+-        return [{"add": {"table": {"family": "inet",
+-                                   "name": table}}},
+-                {"delete": {"table": {"family": "inet",
+-                                      "name": table}}}]
++        return self._build_add_table_rules(table) + [
++            {"delete": {"table": {"family": "inet", "name": table}}},
++        ]
+ 
+     def build_flush_rules(self):
+         self.rule_to_handle = {}
+@@ -437,8 +501,7 @@ class nftables(object):
+         # a higher priority than our base chains is sufficient.
+         rules = []
+         if policy == "PANIC":
+-            rules.append({"add": {"table": {"family": "inet",
+-                                            "name": TABLE_NAME_POLICY}}})
++            rules.extend(self._build_add_table_rules(TABLE_NAME_POLICY))
+ 
+             # Use "raw" priority for panic mode. This occurs before
+             # conntrack, mangle, nat, etc
+@@ -451,8 +514,7 @@ class nftables(object):
+                                                 "prio": -300 + NFT_HOOK_OFFSET - 1,
+                                                 "policy": "drop"}}})
+         elif policy == "DROP":
+-            rules.append({"add": {"table": {"family": "inet",
+-                                            "name": TABLE_NAME_POLICY}}})
++            rules.extend(self._build_add_table_rules(TABLE_NAME_POLICY))
+ 
+             # To drop everything except existing connections we use
+             # "filter" because it occurs _after_ conntrack.
+@@ -511,10 +573,7 @@ class nftables(object):
+         return list(supported)
+ 
+     def build_default_tables(self):
+-        default_tables = []
+-        default_tables.append({"add": {"table": {"family": "inet",
+-                                                 "name": TABLE_NAME}}})
+-        return default_tables
++        return self._build_add_table_rules(TABLE_NAME)
+ 
+     def build_default_rules(self, log_denied="off"):
+         default_rules = []
+diff --git a/src/firewall/server/config.py b/src/firewall/server/config.py
+index b805e497bb05..c07a1e6a2503 100644
+--- a/src/firewall/server/config.py
++++ b/src/firewall/server/config.py
+@@ -110,6 +110,7 @@ class FirewallDConfig(DbusServiceObject):
+                 "FlushAllOnReload": "readwrite",
+                 "RFC3964_IPv4": "readwrite",
+                 "AllowZoneDrifting": "readwrite",
++                "NftablesTableOwner": "readwrite",
+             }
+         )
+ 
+@@ -565,7 +566,7 @@ class FirewallDConfig(DbusServiceObject):
+                          "CleanupModulesOnExit", "Lockdown", "IPv6_rpfilter",
+                          "IndividualCalls", "LogDenied", "AutomaticHelpers",
+                          "FirewallBackend", "FlushAllOnReload", "RFC3964_IPv4",
+-                         "AllowZoneDrifting", "IPv6_rpfilter2" ]:
++                         "AllowZoneDrifting", "IPv6_rpfilter2", "NftablesTableOwner" ]:
+             raise dbus.exceptions.DBusException(
+                 "org.freedesktop.DBus.Error.InvalidArgs: "
+                 "Property '%s' does not exist" % prop)
+@@ -631,6 +632,10 @@ class FirewallDConfig(DbusServiceObject):
+             if value is None:
+                 value = "yes" if config.FALLBACK_ALLOW_ZONE_DRIFTING else "no"
+             return dbus.String(value)
++        elif prop == "NftablesTableOwner":
++            if value is None:
++                value = "yes" if config.FALLBACK_NFTABLES_TABLE_OWNER else "no"
++            return dbus.String(value)
+ 
+     @dbus_handle_exceptions
+     def _get_dbus_property(self, prop):
+@@ -662,6 +667,8 @@ class FirewallDConfig(DbusServiceObject):
+             return dbus.String(self._get_property(prop))
+         elif prop == "AllowZoneDrifting":
+             return dbus.String(self._get_property(prop))
++        elif prop == "NftablesTableOwner":
++            return dbus.String(self._get_property(prop))
+         else:
+             raise dbus.exceptions.DBusException(
+                 "org.freedesktop.DBus.Error.InvalidArgs: "
+@@ -701,7 +708,7 @@ class FirewallDConfig(DbusServiceObject):
+                        "CleanupModulesOnExit", "Lockdown", "IPv6_rpfilter",
+                        "IndividualCalls", "LogDenied", "AutomaticHelpers",
+                        "FirewallBackend", "FlushAllOnReload", "RFC3964_IPv4",
+-                       "AllowZoneDrifting", "IPv6_rpfilter2" ]:
++                       "AllowZoneDrifting", "IPv6_rpfilter2", "NftablesTableOwner" ]:
+                 ret[x] = self._get_property(x)
+         elif interface_name in [ config.dbus.DBUS_INTERFACE_CONFIG_DIRECT,
+                                  config.dbus.DBUS_INTERFACE_CONFIG_POLICIES ]:
+@@ -730,11 +737,12 @@ class FirewallDConfig(DbusServiceObject):
+                                   "IPv6_rpfilter", "IndividualCalls",
+                                   "LogDenied",
+                                   "FirewallBackend", "FlushAllOnReload",
+-                                  "RFC3964_IPv4", "IPv6_rpfilter2"]:
++                                  "RFC3964_IPv4", "IPv6_rpfilter2",
++                                  "NftablesTableOwner" ]:
+                 if property_name in [ "CleanupOnExit", "CleanupModulesOnExit",
+                                       "Lockdown", "IPv6_rpfilter",
+                                       "IndividualCalls", "FlushAllOnReload",
+-                                      "RFC3964_IPv4"]:
++                                      "RFC3964_IPv4", "NftablesTableOwner" ]:
+                     if new_value.lower() not in [ "yes", "no",
+                                                   "true", "false" ]:
+                         raise FirewallError(errors.INVALID_VALUE,
+diff --git a/src/tests/dbus/firewalld.conf.at b/src/tests/dbus/firewalld.conf.at
+index 61c220f3e59c..2ead41baa00a 100644
+--- a/src/tests/dbus/firewalld.conf.at
++++ b/src/tests/dbus/firewalld.conf.at
+@@ -30,6 +30,7 @@ string "IndividualCalls" : variant string m4_escape(["${EXPECTED_INDIVIDUAL_CALL
+ string "Lockdown" : variant string "no"
+ string "LogDenied" : variant string "off"
+ string "MinimalMark" : variant int32 100
++string "NftablesTableOwner" : variant string "yes"
+ string "RFC3964_IPv4" : variant string "yes"
+ ])
+ 
+@@ -54,6 +55,7 @@ _helper([CleanupModulesOnExit], [string:"yes"], [variant string "yes"])
+ _helper([CleanupOnExit], [string:"no"], [variant string "no"])
+ _helper([RFC3964_IPv4], [string:"no"], [variant string "no"])
+ _helper([AllowZoneDrifting], [string:"yes"], [variant string "no"])
++_helper([NftablesTableOwner], [string:"no"], [variant string "no"])
+ dnl Note: DefaultZone is RO
+ m4_undefine([_helper])
+ 
+diff --git a/src/tests/regression/rhbz2222044.at b/src/tests/regression/rhbz2222044.at
+index 7e3454509188..2d0333865076 100644
+--- a/src/tests/regression/rhbz2222044.at
++++ b/src/tests/regression/rhbz2222044.at
+@@ -2,6 +2,11 @@ FWD_START_TEST([duplicate rules after restart])
+ AT_KEYWORDS(rhbz2222044)
+ AT_SKIP_IF([! NS_CMD([command -v wc >/dev/null 2>&1])])
+ 
++dnl Disable for this test because CI do not support table owner. It's very new
++dnl in nftables.
++AT_CHECK([sed -i 's/^NftablesTableOwner=.*/NftablesTableOwner=no/' ./firewalld.conf])
++FWD_RELOAD()
++
+ dnl rules have not changed so rule count should not change
+ m4_define([check_rule_count], [
+ m4_if(nftables, FIREWALL_BACKEND, [
+-- 
+2.43.5
+

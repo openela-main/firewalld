@@ -1,0 +1,66 @@
+From 11ee9b9ed8da78bfc11edffc2c9386efa41be1cf Mon Sep 17 00:00:00 2001
+From: Eric Garver <eric@garver.life>
+Date: Mon, 18 Dec 2023 18:22:38 -0500
+Subject: [PATCH 08/22] v2.1.0: improvement(nftables): do not track rule
+ handles for policy table
+
+It's not necessary. This table is transient and we simply delete the
+entire table when we're done with it.
+
+(cherry picked from commit 119dff1d86f841cd2f33ddbab278bc9257dae7b0)
+---
+ src/firewall/core/nftables.py | 24 +++++++-----------------
+ 1 file changed, 7 insertions(+), 17 deletions(-)
+
+diff --git a/src/firewall/core/nftables.py b/src/firewall/core/nftables.py
+index 3df3fa3c3742..690a5dc067ab 100644
+--- a/src/firewall/core/nftables.py
++++ b/src/firewall/core/nftables.py
+@@ -386,6 +386,11 @@ class nftables(object):
+             if verb not in output["nftables"][index]:
+                 continue
+ 
++            # don't bother tracking handles for the policy table as we simply
++            # delete the entire table.
++            if TABLE_NAME_POLICY == output["nftables"][index][verb]["rule"]["table"]:
++                continue
++
+             self.rule_to_handle[rule_key] = output["nftables"][index][verb]["rule"]["handle"]
+ 
+     def set_rule(self, rule, log_denied):
+@@ -408,18 +413,8 @@ class nftables(object):
+                                       "name": table}}}]
+ 
+     def build_flush_rules(self):
+-        # Policy is stashed in a separate table that we're _not_ going to
+-        # flush. As such, we retain the policy rule handles and ref counts.
+-        saved_rule_to_handle = {}
+-        saved_rule_ref_count = {}
+-        for rule in self._build_set_policy_rules_ct_rules(True):
+-            policy_key = self._get_rule_key(rule)
+-            if policy_key in self.rule_to_handle:
+-                saved_rule_to_handle[policy_key] = self.rule_to_handle[policy_key]
+-                saved_rule_ref_count[policy_key] = self.rule_ref_count[policy_key]
+-
+-        self.rule_to_handle = saved_rule_to_handle
+-        self.rule_ref_count = saved_rule_ref_count
++        self.rule_to_handle = {}
++        self.rule_ref_count = {}
+         self.rich_rule_priority_counts = {}
+         self.policy_priority_counts = {}
+         self.zone_source_index_cache = {}
+@@ -475,11 +470,6 @@ class nftables(object):
+ 
+             rules += self._build_set_policy_rules_ct_rules(True)
+         elif policy == "ACCEPT":
+-            for rule in self._build_set_policy_rules_ct_rules(False):
+-                policy_key = self._get_rule_key(rule)
+-                if policy_key in self.rule_to_handle:
+-                    rules.append(rule)
+-
+             rules += self._build_delete_table_rules(TABLE_NAME_POLICY)
+         else:
+             raise FirewallError(UNKNOWN_ERROR, "not implemented")
+-- 
+2.43.5
+

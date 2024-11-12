@@ -1,0 +1,31 @@
+From d368d579c78652a68273897d5f8b5099d251a9b5 Mon Sep 17 00:00:00 2001
+From: Eric Garver <eric@garver.life>
+Date: Tue, 14 May 2024 16:21:06 -0400
+Subject: [PATCH 12/22] v2.2.0: test(functions): add macro
+ CHECK_NFTABLES_FIB_IN_FORWARD
+
+(cherry picked from commit b9cf7b75c7d94efa98545a3b7ad5020b1896b22a)
+---
+ src/tests/functions.at | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/src/tests/functions.at b/src/tests/functions.at
+index 65a4ce078e05..b2372dd4075b 100644
+--- a/src/tests/functions.at
++++ b/src/tests/functions.at
+@@ -754,3 +754,12 @@ m4_define([CHECK_NFTABLES_FIB], [
+         IF_HOST_SUPPORTS_NFT_FIB([], [AT_SKIP_IF([:])])
+     ])
+ ])
++
++m4_define([CHECK_NFTABLES_FIB_IN_FORWARD], [
++    m4_if(nftables, FIREWALL_BACKEND, [
++        NS_CHECK([nft add table inet firewalld_check])
++        NS_CHECK([nft add chain inet firewalld_check foobar { type filter hook forward priority 0 \; }])
++        AT_SKIP_IF([! NS_CMD([nft add rule inet firewalld_check foobar meta nfproto ipv6 fib saddr . mark . iif oif missing drop >/dev/null 2>&1])])
++        NS_CHECK([nft delete table inet firewalld_check])
++    ])
++])
+-- 
+2.43.5
+

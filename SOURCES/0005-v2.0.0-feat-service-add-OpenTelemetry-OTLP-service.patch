@@ -1,0 +1,53 @@
+From a27f6afa21de35aa98e5309430dbcab9e6056f9c Mon Sep 17 00:00:00 2001
+From: Pat Riehecky <riehecky@fnal.gov>
+Date: Wed, 1 Feb 2023 09:52:43 -0600
+Subject: [PATCH 05/22] v2.0.0: feat(service): add OpenTelemetry (OTLP) service
+
+(cherry picked from commit 77c7061cc191bec6d8a36d2666c2d3c3e0ccbb4a)
+---
+ config/Makefile.am                | 1 +
+ config/services/opentelemetry.xml | 7 +++++++
+ po/POTFILES.in                    | 1 +
+ 3 files changed, 9 insertions(+)
+ create mode 100644 config/services/opentelemetry.xml
+
+diff --git a/config/Makefile.am b/config/Makefile.am
+index d66398563ff2..47f30c1566e0 100644
+--- a/config/Makefile.am
++++ b/config/Makefile.am
+@@ -247,6 +247,7 @@ CONFIG_FILES = \
+ 	services/ntp.xml \
+ 	services/nut.xml \
+ 	services/openvpn.xml \
++	services/opentelemetry.xml \
+ 	services/ovirt-imageio.xml \
+ 	services/ovirt-storageconsole.xml \
+ 	services/ovirt-vmconsole.xml \
+diff --git a/config/services/opentelemetry.xml b/config/services/opentelemetry.xml
+new file mode 100644
+index 000000000000..46c0e5258957
+--- /dev/null
++++ b/config/services/opentelemetry.xml
+@@ -0,0 +1,7 @@
++<?xml version="1.0" encoding="utf-8"?>
++<service>
++  <short>OTLP</short>
++  <description>OpenTelemetry Protocol (OTLP) specification describes the encoding, transport, and delivery mechanism of telemetry data between telemetry sources, intermediate nodes such as collectors and telemetry backends.</description>
++  <port protocol="tcp" port="4317"/>
++  <port protocol="tcp" port="4318"/>
++</service>
+diff --git a/po/POTFILES.in b/po/POTFILES.in
+index f3c0595980f9..1c990542ac4d 100644
+--- a/po/POTFILES.in
++++ b/po/POTFILES.in
+@@ -180,6 +180,7 @@ config/services/nrpe.xml
+ config/services/ntp.xml
+ config/services/nut.xml
+ config/services/openvpn.xml
++config/services/opentelemetry.xml
+ config/services/ovirt-imageio.xml
+ config/services/ovirt-storageconsole.xml
+ config/services/ovirt-vmconsole.xml
+-- 
+2.43.5
+

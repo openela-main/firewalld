@@ -1,0 +1,71 @@
+From 22b100b8ac9aeeacae851e2b9f11e4dc1741cd85 Mon Sep 17 00:00:00 2001
+From: Thomas Haller <thaller@redhat.com>
+Date: Tue, 12 Dec 2023 14:58:07 +0100
+Subject: [PATCH 07/22] v2.1.0: fix(rich): validate service name of rich rule
+
+Previously, validation of valid service names was not done.
+That meant:
+
+  $ firewall-cmd --add-rich-rule='rule priority="-100" family="ipv4" source address="10.0.0.10" service name="listen" accept' --permanent
+  success
+  $ firewall-cmd --reload
+  Error: INVALID_SERVICE: listen
+
+which left firewalld in a bad state.
+
+Now:
+
+  $ firewall-cmd --add-rich-rule='rule priority="-100" family="ipv4" source address="10.0.0.10" service name="listen" accept' --permanent
+  Error: INVALID_SERVICE: Zone 'public': 'listen' not among existing services
+
+https://issues.redhat.com/browse/RHEL-5790
+(cherry picked from commit fbcdddd3e38c31a7b8325bf02764b84344c216b0)
+---
+ src/firewall/core/io/policy.py   | 8 ++++++++
+ src/tests/features/rich_rules.at | 7 ++++++-
+ 2 files changed, 14 insertions(+), 1 deletion(-)
+
+diff --git a/src/firewall/core/io/policy.py b/src/firewall/core/io/policy.py
+index 7d383abb0a2d..f9a1114d7969 100644
+--- a/src/firewall/core/io/policy.py
++++ b/src/firewall/core/io/policy.py
+@@ -471,6 +471,14 @@ def common_check_config(obj, config, item, all_config, all_io_objects):
+                             log.debug1("{} (unsupported)".format(ex))
+                         else:
+                             raise ex
++            elif isinstance(obj_rich.element, rich.Rich_Service):
++                if obj_rich.element.name not in all_io_objects["services"]:
++                    raise FirewallError(
++                        errors.INVALID_SERVICE,
++                        "{} '{}': '{}' not among existing services".format(
++                            obj_type, obj.name, obj_rich.element.name
++                        ),
++                    )
+ 
+ def common_writer(obj, handler):
+     # short
+diff --git a/src/tests/features/rich_rules.at b/src/tests/features/rich_rules.at
+index aadc76da57b4..f7d1a1d0abf4 100644
+--- a/src/tests/features/rich_rules.at
++++ b/src/tests/features/rich_rules.at
+@@ -46,6 +46,10 @@ FWD_CHECK([--permanent --policy foobar --add-rich-rule='rule family=ipv4 priorit
+ FWD_CHECK([--permanent --policy foobar --add-rich-rule='rule family=ipv4 priority=0  source address=10.10.10.13 drop'], 0, ignore)
+ FWD_CHECK([--permanent --policy foobar --add-rich-rule='rule family=ipv4 priority=-1 source address=10.10.10.14 accept'], 0, ignore)
+ FWD_CHECK([--permanent --policy foobar --add-rich-rule='rule family=ipv4 priority=1  source address=10.10.10.15 accept'], 0, ignore)
++
++dnl Invalid service name is rejected.
++FWD_CHECK([--permanent --policy foobar --add-rich-rule='rule priority="-100" family="ipv4" source address="10.0.0.10" service name="bogusservice" accept'], 101, ignore, ignore)
++
+ FWD_RELOAD
+ NFT_LIST_RULES([inet], [filter_IN_policy_foobar_pre], 0, [dnl
+     table inet firewalld {
+@@ -319,4 +323,5 @@ IP6TABLES_LIST_RULES([filter], [IN_foobar_post], 0, [dnl
+     ACCEPT 0 -- ::/0 ::/0
+ ])
+ 
+-FWD_END_TEST([-e '/ERROR: INVALID_ZONE:/d'])
++FWD_END_TEST([-e '/ERROR: INVALID_ZONE:/d' dnl
++              -e "/ERROR: INVALID_SERVICE: Policy 'foobar': 'bogusservice' not among existing services/d"])
+-- 
+2.43.5
+

@@ -1,0 +1,229 @@
+From a965defecfad03530f3374271fb4889ff895ab1c Mon Sep 17 00:00:00 2001
+From: Eric Garver <eric@garver.life>
+Date: Tue, 14 May 2024 12:16:44 -0400
+Subject: [PATCH 17/22] v2.2.0: feat(IPv6_rpfilter): support loose-forward
+ rpfilter
+
+This adds a new config value for IPv6_rpfilter, loose-forward. In this
+mode the rpfilter occurs only for forwarded packets using the "loose"
+algorithm from RFC 3704. This is a significant performance improvement
+for end-stations that have a single default route because the RPF check
+is completely absent on INPUT.
+
+This new value is NOT compatible with the iptables backend. This is
+enforced by configuration checks.
+
+(cherry picked from commit fb692d2e560253c97c7fdd1e9fdbfcc8c61d0eba)
+---
+ config/firewalld.conf                  |  2 ++
+ doc/xml/firewalld.conf.xml             |  2 ++
+ src/firewall/config/__init__.py.in     |  3 ++-
+ src/firewall/core/fw.py                |  2 ++
+ src/firewall/core/io/firewalld_conf.py | 15 +++++++++++
+ src/firewall/core/nftables.py          | 30 ++++++++++++++-------
+ src/tests/features/rpfilter.at         | 36 ++++++++++++++++++++++++++
+ 7 files changed, 79 insertions(+), 11 deletions(-)
+
+diff --git a/config/firewalld.conf b/config/firewalld.conf
+index c35caf9f152b..5d0777d54b15 100644
+--- a/config/firewalld.conf
++++ b/config/firewalld.conf
+@@ -36,6 +36,8 @@ Lockdown=no
+ #            verifies that there is a route back to the source through any
+ #            interface; even if it's not the same one on which the packet
+ #            arrived.
++#   - loose-forward: This is almost identical to "loose", but does not perform
++#                    RPF for packets targeted to the host (INPUT).
+ #   - no: RPF is completely disabled.
+ #
+ # The rp_filter for IPv4 is controlled using sysctl.
+diff --git a/doc/xml/firewalld.conf.xml b/doc/xml/firewalld.conf.xml
+index 279a149ab2a1..1303758347e2 100644
+--- a/doc/xml/firewalld.conf.xml
++++ b/doc/xml/firewalld.conf.xml
+@@ -131,6 +131,8 @@
+ 	               verifies that there is a route back to the source through any
+ 	               interface; even if it's not the same one on which the packet
+ 	               arrived.
++	      - loose-forward: This is almost identical to "loose", but does not perform
++	                       RPF for packets targeted to the host (INPUT).
+ 	      - no: RPF is completely disabled.
+ 
+ 	    The rp_filter for IPv4 is controlled using sysctl.
+diff --git a/src/firewall/config/__init__.py.in b/src/firewall/config/__init__.py.in
+index 6bfe96be35a6..f2c4c9f5afa1 100644
+--- a/src/firewall/config/__init__.py.in
++++ b/src/firewall/config/__init__.py.in
+@@ -120,7 +120,8 @@ COMMANDS = {
+ LOG_DENIED_VALUES = [ "all", "unicast", "broadcast", "multicast", "off" ]
+ AUTOMATIC_HELPERS_VALUES = [ "yes", "no", "system" ]
+ FIREWALL_BACKEND_VALUES = [ "nftables", "iptables" ]
+-IPV6_RPFILTER_VALUES = ["yes", "true", "no", "false", "strict", "loose"]
++IPV6_RPFILTER_VALUES = ["yes", "true", "no", "false", "strict", "loose",
++                        "loose-forward"]
+ 
+ # fallbacks: will be overloaded by firewalld.conf
+ FALLBACK_ZONE = "public"
+diff --git a/src/firewall/core/fw.py b/src/firewall/core/fw.py
+index d9724e9c8534..8c20a4a606e2 100644
+--- a/src/firewall/core/fw.py
++++ b/src/firewall/core/fw.py
+@@ -335,6 +335,8 @@ class Firewall(object):
+                         self._ipv6_rpfilter = "strict"
+                     elif value.lower() in ["loose"]:
+                         self._ipv6_rpfilter = "loose"
++                    elif value.lower() in ["loose-forward"]:
++                        self._ipv6_rpfilter = "loose-forward"
+                 log.debug1(f"IPv6_rpfilter is set to '{self._ipv6_rpfilter}'")
+ 
+             if self._firewalld_conf.get("IndividualCalls"):
+diff --git a/src/firewall/core/io/firewalld_conf.py b/src/firewall/core/io/firewalld_conf.py
+index 9ad64883b656..159715df7ede 100644
+--- a/src/firewall/core/io/firewalld_conf.py
++++ b/src/firewall/core/io/firewalld_conf.py
+@@ -26,6 +26,7 @@ import shutil
+ 
+ from firewall import config
+ from firewall.core.logger import log
++from firewall import errors
+ 
+ valid_keys = [ "DefaultZone", "MinimalMark", "CleanupOnExit",
+                "CleanupModulesOnExit", "Lockdown", "IPv6_rpfilter",
+@@ -81,6 +82,18 @@ class firewalld_conf(object):
+         self.set("RFC3964_IPv4", "yes" if config.FALLBACK_RFC3964_IPV4 else "no")
+         self.set("AllowZoneDrifting", "yes" if config.FALLBACK_ALLOW_ZONE_DRIFTING else "no")
+ 
++    def sanity_check(self):
++        if (
++            self.get("FirewallBackend") == "iptables"
++            and self.get("IPv6_rpfilter") == "loose-forward"
++        ):
++            raise errors.FirewallError(
++                errors.INVALID_VALUE,
++                "IPv6_rpfilter=loose-forward is incompatible "
++                "with FirewallBackend=iptables. This is a limitation "
++                "of the iptables backend.",
++            )
++
+     # load self.filename
+     def read(self):
+         self.clear()
+@@ -238,6 +251,8 @@ class firewalld_conf(object):
+                             config.FALLBACK_ALLOW_ZONE_DRIFTING)
+             self.set("AllowZoneDrifting", "yes" if config.FALLBACK_ALLOW_ZONE_DRIFTING else "no")
+ 
++        self.sanity_check()
++
+     # save to self.filename if there are key/value changes
+     def write(self):
+         if len(self._config) < 1:
+diff --git a/src/firewall/core/nftables.py b/src/firewall/core/nftables.py
+index 9827e84042ef..da2d8eb8ec29 100644
+--- a/src/firewall/core/nftables.py
++++ b/src/firewall/core/nftables.py
+@@ -1614,9 +1614,13 @@ class nftables(object):
+ 
+     def build_rpfilter_rules(self, log_denied=False):
+         rules = []
++        rpfilter_chain = "filter_PREROUTING"
+ 
+         if self._fw._ipv6_rpfilter == "loose":
+             fib_flags = ["saddr", "mark"]
++        elif self._fw._ipv6_rpfilter == "loose-forward":
++            fib_flags = ["saddr", "mark"]
++            rpfilter_chain = "filter_FORWARD"
+         else:
+             fib_flags = ["saddr", "mark", "iif"]
+ 
+@@ -1633,17 +1637,19 @@ class nftables(object):
+ 
+         rules.append({"insert": {"rule": {"family": "inet",
+                                           "table": TABLE_NAME,
+-                                          "chain": "filter_PREROUTING",
++                                          "chain": rpfilter_chain,
+                                           "expr": expr_fragments}}})
+         # RHBZ#1058505, RHBZ#1575431 (bug in kernel 4.16-4.17)
+-        rules.append({"insert": {"rule": {"family": "inet",
+-                                          "table": TABLE_NAME,
+-                                          "chain": "filter_PREROUTING",
+-                                          "expr": [{"match": {"left": {"payload": {"protocol": "icmpv6",
+-                                                                                   "field": "type"}},
+-                                                              "op": "==",
+-                                                              "right": {"set": ["nd-router-advert", "nd-neighbor-solicit"]}}},
+-                                                   {"accept": None}]}}})
++        if self._fw._ipv6_rpfilter != "loose-forward":
++            # this rule doesn't make sense for forwarded packets
++            rules.append({"insert": {"rule": {"family": "inet",
++                                              "table": TABLE_NAME,
++                                              "chain": rpfilter_chain,
++                                              "expr": [{"match": {"left": {"payload": {"protocol": "icmpv6",
++                                                                                       "field": "type"}},
++                                                                  "op": "==",
++                                                                  "right": {"set": ["nd-router-advert", "nd-neighbor-solicit"]}}},
++                                                       {"accept": None}]}}})
+         return rules
+ 
+     def build_rfc3964_ipv4_rules(self):
+@@ -1674,7 +1680,11 @@ class nftables(object):
+                                        "chain": "filter_OUTPUT",
+                                        "index": 1,
+                                        "expr": expr_fragments}}})
+-        forward_index = 4 if self._fw.get_log_denied() != "off" else 3
++        forward_index = 3
++        if self._fw.get_log_denied() != "off":
++            forward_index += 1
++        if self._fw._ipv6_rpfilter == "loose-forward":
++            forward_index += 1
+         rules.append({"add": {"rule": {"family": "inet",
+                                        "table": TABLE_NAME,
+                                        "chain": "filter_FORWARD",
+diff --git a/src/tests/features/rpfilter.at b/src/tests/features/rpfilter.at
+index 23cd9e0e8d7f..5c25ed7e16f0 100644
+--- a/src/tests/features/rpfilter.at
++++ b/src/tests/features/rpfilter.at
+@@ -50,6 +50,42 @@ IP6TABLES_LIST_RULES([mangle], [PREROUTING], 0, [dnl
+ 
+ FWD_END_TEST()
+ 
++FWD_START_TEST([rpfilter - loose-forward])
++AT_KEYWORDS(rpfilter)
++CHECK_NFTABLES_FIB()
++CHECK_NFTABLES_FIB_IN_FORWARD()
++
++AT_CHECK([sed -i 's/^IPv6_rpfilter.*/IPv6_rpfilter=loose-forward/' ./firewalld.conf])
++m4_if(iptables, FIREWALL_BACKEND, [
++FWD_RELOAD(114, [ignore], [ignore])
++], [
++FWD_RELOAD()
++])
++
++NFT_LIST_RULES([inet], [filter_FORWARD], 0, [dnl
++    table inet firewalld {
++        chain filter_FORWARD {
++            meta nfproto ipv6 fib saddr . mark oif missing drop
++            ct state established,related accept
++            ct status dnat accept
++            iifname "lo" accept
++            ct state invalid drop
++            ip6 daddr { ::/96, ::ffff:0.0.0.0/96, 2002::/24, 2002:a00::/24, 2002:7f00::/24, 2002:a9fe::/32, 2002:ac10::/28, 2002:c0a8::/32, 2002:e000::/19 } reject with icmpv6 addr-unreachable
++            jump filter_FORWARD_ZONES
++            reject with icmpx admin-prohibited
++        }
++    }
++])
++
++NFT_LIST_RULES([inet], [filter_PREROUTING], 0, [dnl
++    table inet firewalld {
++        chain filter_PREROUTING {
++        }
++    }
++])
++
++FWD_END_TEST([-e "/^ERROR: INVALID_VALUE:/d"])
++
+ FWD_START_TEST([rpfilter - config values])
+ AT_KEYWORDS(rpfilter)
+ CHECK_NFTABLES_FIB()
+-- 
+2.43.5
+

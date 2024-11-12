@@ -1,0 +1,303 @@
+From 67c8a0010ba6244c40e48a93560eb66d91a2ca09 Mon Sep 17 00:00:00 2001
+From: Thomas Haller <thaller@redhat.com>
+Date: Mon, 14 Aug 2023 14:53:55 +0200
+Subject: [PATCH 10/22] v2.1.0: feat(fw): add ReloadPolicy option in
+ firewalld.conf
+
+One interesting aspect is that during `firewall-cmd --reload`, the code
+first sets the policy to "DROP", before reloading "firewalld.conf". That
+means, changing the value only takes effect after the next reload. But
+that seems expected as we set the policy before starting to reload.
+
+Fixes: https://bugzilla.redhat.com/show_bug.cgi?id=2149039
+(cherry picked from commit 0019371a8f42d376ac9cce79cc5e1e7d2049f021)
+---
+ config/firewalld.conf                  |  8 +++
+ doc/xml/firewalld.conf.xml             | 16 ++++++
+ src/firewall/config/__init__.py.in     |  1 +
+ src/firewall/core/fw.py                | 13 ++++-
+ src/firewall/core/io/firewalld_conf.py | 56 ++++++++++++++++++++-
+ src/tests/features/features.at         |  1 +
+ src/tests/features/reloadpolicy.at     | 12 +++++
+ src/tests/unit/test_firewalld_conf.py  | 68 ++++++++++++++++++++++++++
+ 8 files changed, 172 insertions(+), 3 deletions(-)
+ create mode 100644 src/tests/features/reloadpolicy.at
+ create mode 100644 src/tests/unit/test_firewalld_conf.py
+
+diff --git a/config/firewalld.conf b/config/firewalld.conf
+index f8caf11c8a86..7a0be1ff1b76 100644
+--- a/config/firewalld.conf
++++ b/config/firewalld.conf
+@@ -66,6 +66,14 @@ FirewallBackend=nftables
+ # Default: yes
+ FlushAllOnReload=yes
+ 
++# ReloadPolicy
++# Policy during reload. By default all traffic except for established
++# connections is dropped while the rules are updated. Set to "DROP", "REJECT"
++# or "ACCEPT". Alternatively, specify it per table, like
++# "OUTPUT:ACCEPT,INPUT:DROP,FORWARD:REJECT".
++# Default: ReloadPolicy=INPUT:DROP,FORWARD:DROP,OUTPUT:DROP
++ReloadPolicy=INPUT:DROP,FORWARD:DROP,OUTPUT:DROP
++
+ # RFC3964_IPv4
+ # As per RFC 3964, filter IPv6 traffic with 6to4 destination addresses that
+ # correspond to IPv4 addresses that should not be routed over the public
+diff --git a/doc/xml/firewalld.conf.xml b/doc/xml/firewalld.conf.xml
+index e4312acc8e1c..022569ccf502 100644
+--- a/doc/xml/firewalld.conf.xml
++++ b/doc/xml/firewalld.conf.xml
+@@ -195,6 +195,22 @@
+             </listitem>
+         </varlistentry>
+ 
++        <varlistentry>
++            <term><option>ReloadPolicy</option></term>
++            <listitem>
++                <para>
++                    The policy during reload. By default, all traffic except
++                    established connections is dropped while reloading the
++                    firewall rules. This can be overridden for INPUT, FORWARD
++                    and OUTPUT. The accepted values are "DROP", "REJECT" and
++                    "ACCEPT", which then applies to all tables. Alternatively,
++                    the policy can be specified per table, like
++                    "INPUT:REJECT,FORWARD:DROP,OUTPUT:ACCEPT".
++                    Defaults to "INPUT:DROP,FORWARD:DROP,OUTPUT:DROP".
++                </para>
++            </listitem>
++        </varlistentry>
++
+         <varlistentry>
+             <term><option>RFC3964_IPv4</option></term>
+             <listitem>
+diff --git a/src/firewall/config/__init__.py.in b/src/firewall/config/__init__.py.in
+index d982384a0382..da1e31e10e58 100644
+--- a/src/firewall/config/__init__.py.in
++++ b/src/firewall/config/__init__.py.in
+@@ -133,5 +133,6 @@ FALLBACK_LOG_DENIED = "off"
+ FALLBACK_AUTOMATIC_HELPERS = "no"
+ FALLBACK_FIREWALL_BACKEND = "nftables"
+ FALLBACK_FLUSH_ALL_ON_RELOAD = True
++FALLBACK_RELOAD_POLICY = "INPUT:DROP,FORWARD:DROP,OUTPUT:DROP"
+ FALLBACK_RFC3964_IPV4 = True
+ FALLBACK_ALLOW_ZONE_DRIFTING = False
+diff --git a/src/firewall/core/fw.py b/src/firewall/core/fw.py
+index ccec875f3c3c..ac13be122b66 100644
+--- a/src/firewall/core/fw.py
++++ b/src/firewall/core/fw.py
+@@ -1000,7 +1000,13 @@ class Firewall(object):
+         else:
+             transaction = use_transaction
+ 
+-        log.debug1("Setting policy to '%s'", policy)
++        log.debug1(
++            "Setting policy to '%s'%s",
++            policy,
++            f" (ReloadPolicy={firewalld_conf._unparse_reload_policy(policy_details)})"
++            if policy == "DROP"
++            else "",
++        )
+ 
+         for backend in self.enabled_backends():
+             rules = self._set_policy_build_rules(backend, policy, policy_details)
+@@ -1146,7 +1152,10 @@ class Firewall(object):
+             _ipset_objs.append(self.ipset.get_ipset(_name))
+ 
+         if not _panic:
+-            self.set_policy("DROP")
++            reload_policy = firewalld_conf._parse_reload_policy(
++                self._firewalld_conf.get("ReloadPolicy")
++            )
++            self.set_policy("DROP", policy_details=reload_policy)
+ 
+         self.flush()
+         self.cleanup()
+diff --git a/src/firewall/core/io/firewalld_conf.py b/src/firewall/core/io/firewalld_conf.py
+index b907c5b1e60b..d2879b319d1f 100644
+--- a/src/firewall/core/io/firewalld_conf.py
++++ b/src/firewall/core/io/firewalld_conf.py
+@@ -31,7 +31,7 @@ valid_keys = [ "DefaultZone", "MinimalMark", "CleanupOnExit",
+                "CleanupModulesOnExit", "Lockdown", "IPv6_rpfilter",
+                "IndividualCalls", "LogDenied", "AutomaticHelpers",
+                "FirewallBackend", "FlushAllOnReload", "RFC3964_IPv4",
+-               "AllowZoneDrifting" ]
++               "AllowZoneDrifting", "ReloadPolicy" ]
+ 
+ class firewalld_conf(object):
+     def __init__(self, filename):
+@@ -77,6 +77,7 @@ class firewalld_conf(object):
+         self.set("AutomaticHelpers", config.FALLBACK_AUTOMATIC_HELPERS)
+         self.set("FirewallBackend", config.FALLBACK_FIREWALL_BACKEND)
+         self.set("FlushAllOnReload", "yes" if config.FALLBACK_FLUSH_ALL_ON_RELOAD else "no")
++        self.set("ReloadPolicy", config.FALLBACK_RELOAD_POLICY)
+         self.set("RFC3964_IPv4", "yes" if config.FALLBACK_RFC3964_IPV4 else "no")
+         self.set("AllowZoneDrifting", "yes" if config.FALLBACK_ALLOW_ZONE_DRIFTING else "no")
+ 
+@@ -208,6 +209,17 @@ class firewalld_conf(object):
+                             config.FALLBACK_FLUSH_ALL_ON_RELOAD)
+             self.set("FlushAllOnReload", str(config.FALLBACK_FLUSH_ALL_ON_RELOAD))
+ 
++        value = self.get("ReloadPolicy")
++        try:
++            value = self._parse_reload_policy(value)
++        except ValueError:
++            log.warning(
++                "ReloadPolicy '%s' is not valid, using default value '%s'",
++                value,
++                config.FALLBACK_RELOAD_POLICY,
++            )
++            self.set("ReloadPolicy", config.FALLBACK_RELOAD_POLICY)
++
+         value = self.get("RFC3964_IPv4")
+         if not value or value.lower() not in [ "yes", "true", "no", "false" ]:
+             if value is not None:
+@@ -330,3 +342,45 @@ class firewalld_conf(object):
+             raise IOError("Failed to create '%s': %s" % (self.filename, msg))
+         else:
+             os.chmod(self.filename, 0o600)
++
++    @staticmethod
++    def _parse_reload_policy(value):
++        valid = True
++        result = {
++            "INPUT": "DROP",
++            "FORWARD": "DROP",
++            "OUTPUT": "DROP",
++        }
++        if value:
++            value = value.strip()
++            v = value.upper()
++            if v in ("ACCEPT", "REJECT", "DROP"):
++                for k in result:
++                    result[k] = v
++            else:
++                for a in value.replace(";", ",").split(","):
++                    a = a.strip()
++                    if not a:
++                        continue
++                    a2 = a.replace("=", ":").split(":", 2)
++                    if len(a2) != 2:
++                        valid = False
++                        continue
++                    k = a2[0].strip().upper()
++                    if k not in result:
++                        valid = False
++                        continue
++                    v = a2[1].strip().upper()
++                    if v not in ("ACCEPT", "REJECT", "DROP"):
++                        valid = False
++                        continue
++                    result[k] = v
++
++        if not valid:
++            raise ValueError("Invalid ReloadPolicy")
++
++        return result
++
++    @staticmethod
++    def _unparse_reload_policy(value):
++        return ",".join(f"{k}:{v}" for k, v in value.items())
+diff --git a/src/tests/features/features.at b/src/tests/features/features.at
+index f59baea1cd70..065cb2872e88 100644
+--- a/src/tests/features/features.at
++++ b/src/tests/features/features.at
+@@ -20,3 +20,4 @@ m4_include([features/startup_failsafe.at])
+ m4_include([features/ipset.at])
+ m4_include([features/reset_defaults.at])
+ m4_include([features/iptables_no_flush_on_shutdown.at])
++m4_include([features/reloadpolicy.at])
+diff --git a/src/tests/features/reloadpolicy.at b/src/tests/features/reloadpolicy.at
+new file mode 100644
+index 000000000000..fea1aa26aab4
+--- /dev/null
++++ b/src/tests/features/reloadpolicy.at
+@@ -0,0 +1,12 @@
++FWD_START_TEST([check ReloadPolicy])
++AT_KEYWORDS(reloadpolicy rhbz2149039)
++
++AT_CHECK([sed -i 's/^ReloadPolicy=.*/ReloadPolicy=INPUT:REJECT,FORWARD:ACCEPT/' ./firewalld.conf])
++dnl call RELOAD twice, to see more action about the ReloadPolicy.
++FWD_RELOAD()
++FWD_RELOAD()
++
++AT_CHECK([sed -i 's/^ReloadPolicy=.*/ReloadPolicy=REJECT/' ./firewalld.conf])
++FWD_RELOAD()
++
++FWD_END_TEST()
+diff --git a/src/tests/unit/test_firewalld_conf.py b/src/tests/unit/test_firewalld_conf.py
+new file mode 100644
+index 000000000000..0ce1fd279f91
+--- /dev/null
++++ b/src/tests/unit/test_firewalld_conf.py
+@@ -0,0 +1,68 @@
++# SPDX-License-Identifier: GPL-2.0-or-later
++
++import firewall.core.io.firewalld_conf
++import firewall.config
++
++
++def test_reload_policy():
++    def t(value, expected_valid=True, **kw):
++
++        expected = {
++            "INPUT": "DROP",
++            "FORWARD": "DROP",
++            "OUTPUT": "DROP",
++        }
++        for k, v in kw.items():
++            assert k in expected
++            expected[k] = v
++
++        try:
++            parsed = (
++                firewall.core.io.firewalld_conf.firewalld_conf._parse_reload_policy(
++                    value
++                )
++            )
++        except ValueError:
++            assert not expected_valid
++            return
++
++        assert parsed == expected
++        assert expected_valid
++
++        unparsed = (
++            firewall.core.io.firewalld_conf.firewalld_conf._unparse_reload_policy(
++                parsed
++            )
++        )
++        parsed2 = firewall.core.io.firewalld_conf.firewalld_conf._parse_reload_policy(
++            unparsed
++        )
++        assert parsed2 == parsed
++
++    t(None)
++    t("")
++    t("  ")
++    t(" input: ACCept ", INPUT="ACCEPT")
++    t(
++        "forward:DROP,  forward : REJEct; input: ACCept ",
++        INPUT="ACCEPT",
++        FORWARD="REJECT",
++    )
++    t(" accept ", INPUT="ACCEPT", FORWARD="ACCEPT", OUTPUT="ACCEPT")
++    t("REJECT", INPUT="REJECT", FORWARD="REJECT", OUTPUT="REJECT")
++    t("forward=REJECT", FORWARD="REJECT")
++    t("forward=REJECT , input=accept", FORWARD="REJECT", INPUT="ACCEPT")
++    t("forward=REJECT , xinput=accept", expected_valid=False)
++    t("forward=REJECT, ACCEPT", expected_valid=False)
++
++    def _norm(reload_policy):
++        parsed = firewall.core.io.firewalld_conf.firewalld_conf._parse_reload_policy(
++            reload_policy
++        )
++        return firewall.core.io.firewalld_conf.firewalld_conf._unparse_reload_policy(
++            parsed
++        )
++
++    assert firewall.config.FALLBACK_RELOAD_POLICY == _norm(
++        firewall.config.FALLBACK_RELOAD_POLICY
++    )
+-- 
+2.43.5
+

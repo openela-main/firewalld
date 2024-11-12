@@ -1,7 +1,7 @@
 Summary: A firewall daemon with D-Bus interface providing a dynamic firewall
 Name: firewalld
 Version: 1.3.4
-Release: 1%{?dist}
+Release: 7%{?dist}
 URL:     http://www.firewalld.org
 License: GPLv2+
 Source0: https://github.com/firewalld/firewalld/releases/download/v%{version}/firewalld-%{version}.tar.bz2
@@ -9,6 +9,24 @@ Patch1: 0001-RHEL-only-Add-cockpit-by-default-to-some-zones.patch
 Patch2: 0002-v1.4.0-test-atlocal-pass-EBTABLES-to-testsuite.patch
 Patch3: 0003-v1.4.0-feat-direct-avoid-iptables-flush-if-using-nft.patch
 Patch4: 0004-v1.4.0-test-direct-avoid-iptables-flush-if-using-nft.patch
+Patch5: 0005-v2.0.0-feat-service-add-OpenTelemetry-OTLP-service.patch
+Patch6: 0006-v2.1.0-feat-icmp-add-ICMPv6-Multicast-Listener-Disco.patch
+Patch7: 0007-v2.1.0-fix-rich-validate-service-name-of-rich-rule.patch
+Patch8: 0008-v2.1.0-improvement-nftables-do-not-track-rule-handle.patch
+Patch9: 0009-v2.1.0-improvement-fw-make-set_policy-DROP-more-flex.patch
+Patch10: 0010-v2.1.0-feat-fw-add-ReloadPolicy-option-in-firewalld..patch
+Patch11: 0011-v2.2.0-test-functions-add-macro-CHECK_NFTABLES_FIB.patch
+Patch12: 0012-v2.2.0-test-functions-add-macro-CHECK_NFTABLES_FIB_I.patch
+Patch13: 0013-v2.2.0-test-rpfilter-use-CHECK-macros.patch
+Patch14: 0014-v2.2.0-test-IPv6_rpfilter-verify-valid-values.patch
+Patch15: 0015-v2.2.0-chore-IPv6_rpfilter-prepare-for-new-config-va.patch
+Patch16: 0016-v2.2.0-feat-IPv6_rpfilter-support-loose-rpfilter.patch
+Patch17: 0017-v2.2.0-feat-IPv6_rpfilter-support-loose-forward-rpfi.patch
+Patch18: 0018-v2.2.0-feat-IPv6_rpfilter-support-strict-forward-rpf.patch
+Patch19: 0019-v2.2.0-test-functions-start-firewalld-with-file-logg.patch
+Patch20: 0020-v2.2.0-feat-nftables-table-ownership.patch
+Patch21: 0021-v2.2.0-test-nftables-table-ownership.patch
+Patch22: 0022-v2.2.0-chore-service-remove-Conflicts-with-nftables.patch
 BuildArch: noarch
 BuildRequires: autoconf
 BuildRequires: automake
@@ -111,6 +129,8 @@ end
 %autosetup -p1
 
 %build
+# must run automake since patches touch .am files
+./autogen.sh
 %configure --enable-sysconfig --enable-rpmmacros PYTHON="%{__python3} %{py3_shbang_opts}"
 make %{?_smp_mflags}
 
@@ -230,6 +250,26 @@ rm -rf %{buildroot}%{_datadir}/firewalld/testsuite
 %{_mandir}/man1/firewall-config*.1*
 
 %changelog
+* Mon Jul 01 2024 Eric Garver <egarver@redhat.com> - 1.3.4-7
+- feat(nftables): table ownership
+
+* Mon Jul 01 2024 Eric Garver <egarver@redhat.com> - 1.3.4-6
+- feat(IPv6_rpfilter): support loose rpfilter
+- feat(IPv6_rpfilter): support loose-forward rpfilter
+- feat(IPv6_rpfilter): support strict-forward rpfilter 
+
+* Mon Jul 01 2024 Eric Garver <egarver@redhat.com> - 1.3.4-5
+- feat(fw): add ReloadPolicy option in firewalld.conf
+
+* Mon Jul 01 2024 Eric Garver <egarver@redhat.com> - 1.3.4-4
+- fix(rich): validate service name of rich rule
+
+* Mon Jul 01 2024 Eric Garver <egarver@redhat.com> - 1.3.4-3
+- feat(icmp): add ICMPv6 Multicast Listener Discovery (MLD) types
+
+* Mon Jul 01 2024 Eric Garver <egarver@redhat.com> - 1.3.4-2
+- feat(service): add OpenTelemetry (OTLP) service
+
 * Thu Oct 26 2023 Eric Garver <egarver@redhat.com> - 1.3.4-1
 - package rebase to v1.3.4
 

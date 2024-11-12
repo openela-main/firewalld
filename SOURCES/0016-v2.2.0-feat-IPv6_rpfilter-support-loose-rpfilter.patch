@@ -1,0 +1,166 @@
+From 41828e0723b1ad195a33c535918a2fb6fabaf88f Mon Sep 17 00:00:00 2001
+From: Eric Garver <eric@garver.life>
+Date: Mon, 6 May 2024 10:22:09 -0400
+Subject: [PATCH 16/22] v2.2.0: feat(IPv6_rpfilter): support loose rpfilter
+
+Support "loose" mode as per RFC 3704. This guarantees only that there is
+a patch back to the source, but does NOT guarantee that ingress ==
+egress.
+
+(cherry picked from commit 669524a10658761f614e1f199970844db7259960)
+---
+ config/firewalld.conf              |  4 ++++
+ doc/xml/firewalld.conf.xml         |  4 ++++
+ src/firewall/config/__init__.py.in |  2 +-
+ src/firewall/core/fw.py            |  2 ++
+ src/firewall/core/ipXtables.py     | 16 ++++++++++------
+ src/firewall/core/nftables.py      |  8 +++++++-
+ src/tests/features/rpfilter.at     | 26 ++++++++++++++++++++++++++
+ 7 files changed, 54 insertions(+), 8 deletions(-)
+
+diff --git a/config/firewalld.conf b/config/firewalld.conf
+index 48e2a5a6527a..c35caf9f152b 100644
+--- a/config/firewalld.conf
++++ b/config/firewalld.conf
+@@ -32,6 +32,10 @@ Lockdown=no
+ #             verifies that the in ingress interface is the same interface
+ #             that would be used to send a packet reply to the source. That
+ #             is, ingress == egress.      
++#   - loose: Performs "loose" filtering as per RFC 3704. This check only
++#            verifies that there is a route back to the source through any
++#            interface; even if it's not the same one on which the packet
++#            arrived.
+ #   - no: RPF is completely disabled.
+ #
+ # The rp_filter for IPv4 is controlled using sysctl.
+diff --git a/doc/xml/firewalld.conf.xml b/doc/xml/firewalld.conf.xml
+index be6972aa0d8a..279a149ab2a1 100644
+--- a/doc/xml/firewalld.conf.xml
++++ b/doc/xml/firewalld.conf.xml
+@@ -127,6 +127,10 @@
+ 	                verifies that the in ingress interface is the same interface
+ 	                that would be used to send a packet reply to the source. That
+ 	                is, ingress == egress.      
++	      - loose: Performs "loose" filtering as per RFC 3704. This check only
++	               verifies that there is a route back to the source through any
++	               interface; even if it's not the same one on which the packet
++	               arrived.
+ 	      - no: RPF is completely disabled.
+ 
+ 	    The rp_filter for IPv4 is controlled using sysctl.
+diff --git a/src/firewall/config/__init__.py.in b/src/firewall/config/__init__.py.in
+index 68e9bddce5a8..6bfe96be35a6 100644
+--- a/src/firewall/config/__init__.py.in
++++ b/src/firewall/config/__init__.py.in
+@@ -120,7 +120,7 @@ COMMANDS = {
+ LOG_DENIED_VALUES = [ "all", "unicast", "broadcast", "multicast", "off" ]
+ AUTOMATIC_HELPERS_VALUES = [ "yes", "no", "system" ]
+ FIREWALL_BACKEND_VALUES = [ "nftables", "iptables" ]
+-IPV6_RPFILTER_VALUES = ["yes", "true", "no", "false", "strict"]
++IPV6_RPFILTER_VALUES = ["yes", "true", "no", "false", "strict", "loose"]
+ 
+ # fallbacks: will be overloaded by firewalld.conf
+ FALLBACK_ZONE = "public"
+diff --git a/src/firewall/core/fw.py b/src/firewall/core/fw.py
+index b2e150077958..d9724e9c8534 100644
+--- a/src/firewall/core/fw.py
++++ b/src/firewall/core/fw.py
+@@ -333,6 +333,8 @@ class Firewall(object):
+                         self._ipv6_rpfilter = "no"
+                     elif value.lower() in ["yes", "true", "strict"]:
+                         self._ipv6_rpfilter = "strict"
++                    elif value.lower() in ["loose"]:
++                        self._ipv6_rpfilter = "loose"
+                 log.debug1(f"IPv6_rpfilter is set to '{self._ipv6_rpfilter}'")
+ 
+             if self._firewalld_conf.get("IndividualCalls"):
+diff --git a/src/firewall/core/ipXtables.py b/src/firewall/core/ipXtables.py
+index 1a0cea7a3b4e..339840c37ba4 100644
+--- a/src/firewall/core/ipXtables.py
++++ b/src/firewall/core/ipXtables.py
+@@ -1456,13 +1456,17 @@ class ip6tables(ip4tables):
+ 
+     def build_rpfilter_rules(self, log_denied=False):
+         rules = []
+-        rules.append([ "-I", "PREROUTING", "-t", "mangle",
+-                       "-m", "rpfilter", "--invert", "--validmark",
+-                       "-j", "DROP" ])
++        rpfilter_fragment = ["-m", "rpfilter", "--invert", "--validmark"]
++        if self._fw._ipv6_rpfilter == "loose":
++            rpfilter_fragment += ["--loose"]
++
++        rules.append([ "-I", "PREROUTING", "-t", "mangle" ]
++                     + rpfilter_fragment +
++                     [ "-j", "DROP" ])
+         if log_denied != "off":
+-            rules.append([ "-I", "PREROUTING", "-t", "mangle",
+-                           "-m", "rpfilter", "--invert", "--validmark",
+-                           "-j", "LOG",
++            rules.append([ "-I", "PREROUTING", "-t", "mangle" ]
++                         + rpfilter_fragment +
++                         [ "-j", "LOG",
+                            "--log-prefix", "rpfilter_DROP: " ])
+         rules.append([ "-I", "PREROUTING", "-t", "mangle",
+                        "-p", "ipv6-icmp",
+diff --git a/src/firewall/core/nftables.py b/src/firewall/core/nftables.py
+index e9816147ef8e..9827e84042ef 100644
+--- a/src/firewall/core/nftables.py
++++ b/src/firewall/core/nftables.py
+@@ -1614,10 +1614,16 @@ class nftables(object):
+ 
+     def build_rpfilter_rules(self, log_denied=False):
+         rules = []
++
++        if self._fw._ipv6_rpfilter == "loose":
++            fib_flags = ["saddr", "mark"]
++        else:
++            fib_flags = ["saddr", "mark", "iif"]
++
+         expr_fragments = [{"match": {"left": {"meta": {"key": "nfproto"}},
+                                      "op": "==",
+                                      "right": "ipv6"}},
+-                          {"match": {"left": {"fib": {"flags": ["saddr", "iif", "mark"],
++                          {"match": {"left": {"fib": {"flags": fib_flags,
+                                                       "result": "oif"}},
+                                      "op": "==",
+                                      "right": False}}]
+diff --git a/src/tests/features/rpfilter.at b/src/tests/features/rpfilter.at
+index 58a4b4500330..23cd9e0e8d7f 100644
+--- a/src/tests/features/rpfilter.at
++++ b/src/tests/features/rpfilter.at
+@@ -24,6 +24,32 @@ IP6TABLES_LIST_RULES([mangle], [PREROUTING], 0, [dnl
+ 
+ FWD_END_TEST()
+ 
++FWD_START_TEST([rpfilter - loose])
++AT_KEYWORDS(rpfilter)
++CHECK_NFTABLES_FIB()
++
++AT_CHECK([sed -i 's/^IPv6_rpfilter.*/IPv6_rpfilter=loose/' ./firewalld.conf])
++FWD_RELOAD()
++
++NFT_LIST_RULES([inet], [filter_PREROUTING], 0, [dnl
++    table inet firewalld {
++        chain filter_PREROUTING {
++            icmpv6 type { nd-router-advert, nd-neighbor-solicit } accept
++            meta nfproto ipv6 fib saddr . mark oif missing drop
++        }
++    }
++])
++
++IP6TABLES_LIST_RULES([mangle], [PREROUTING], 0, [dnl
++    ACCEPT 58 -- ::/0 ::/0 ipv6-icmptype 134
++    ACCEPT 58 -- ::/0 ::/0 ipv6-icmptype 135
++    DROP 0 -- ::/0 ::/0 rpfilter loose validmark invert
++    PREROUTING_direct 0 -- ::/0 ::/0
++    PREROUTING_ZONES 0 -- ::/0 ::/0
++])
++
++FWD_END_TEST()
++
+ FWD_START_TEST([rpfilter - config values])
+ AT_KEYWORDS(rpfilter)
+ CHECK_NFTABLES_FIB()
+-- 
+2.43.5
+

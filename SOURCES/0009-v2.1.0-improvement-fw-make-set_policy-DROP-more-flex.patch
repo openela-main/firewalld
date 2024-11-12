@@ -1,0 +1,203 @@
+From c53dabcb9ca5c6d9ab2b076d961127a67afe8f8f Mon Sep 17 00:00:00 2001
+From: Thomas Haller <thaller@redhat.com>
+Date: Fri, 11 Aug 2023 18:16:20 +0200
+Subject: [PATCH 09/22] v2.1.0: improvement(fw): make set_policy("DROP") more
+ flexible
+
+We will add a reload-policy via
+
+  ReloadPolicy=OUTPUT:{ACCEPT,REJECT,DROP},INPUT:{ACCEPT,REJECT,DROP},FORWARD:{ACCEPT,REJECT,DROP}
+
+Extend set_policy() so that the "DROP" policy can be overridden.
+
+(cherry picked from commit e3bb468ff469373d193398b471a59f7ab7d29f27)
+---
+ src/firewall/core/ebtables.py  |  2 +-
+ src/firewall/core/fw.py        | 27 +++++++++++++---
+ src/firewall/core/ipXtables.py | 11 +++++--
+ src/firewall/core/nftables.py  | 56 ++++++++++++++++++++++++----------
+ 4 files changed, 72 insertions(+), 24 deletions(-)
+
+diff --git a/src/firewall/core/ebtables.py b/src/firewall/core/ebtables.py
+index c1c0b8587a5c..f059975724a5 100644
+--- a/src/firewall/core/ebtables.py
++++ b/src/firewall/core/ebtables.py
+@@ -237,7 +237,7 @@ class ebtables(object):
+                 rules.append(["-t", table, flag])
+         return rules
+ 
+-    def build_set_policy_rules(self, policy):
++    def build_set_policy_rules(self, policy, policy_details):
+         rules = []
+         _policy = "DROP" if policy == "PANIC" else policy
+         for table in BUILT_IN_CHAINS.keys():
+diff --git a/src/firewall/core/fw.py b/src/firewall/core/fw.py
+index f1bc124b9443..ccec875f3c3c 100644
+--- a/src/firewall/core/fw.py
++++ b/src/firewall/core/fw.py
+@@ -983,7 +983,18 @@ class Firewall(object):
+         if use_transaction is None:
+             transaction.execute(True)
+ 
+-    def set_policy(self, policy, use_transaction=None):
++    def _set_policy_build_rules(self, backend, policy, policy_details=None):
++        assert policy in ("ACCEPT", "DROP", "PANIC")
++        if policy_details is None:
++            dp = "ACCEPT" if policy == "ACCEPT" else "DROP"
++            policy_details = {
++                "INPUT": dp,
++                "OUTPUT": dp,
++                "FORWARD": dp,
++            }
++        return backend.build_set_policy_rules(policy, policy_details)
++
++    def set_policy(self, policy, policy_details=None, use_transaction=None):
+         if use_transaction is None:
+             transaction = FirewallTransaction(self)
+         else:
+@@ -992,7 +1003,7 @@ class Firewall(object):
+         log.debug1("Setting policy to '%s'", policy)
+ 
+         for backend in self.enabled_backends():
+-            rules = backend.build_set_policy_rules(policy)
++            rules = self._set_policy_build_rules(backend, policy, policy_details)
+             transaction.add_rules(backend, rules)
+ 
+         if use_transaction is None:
+@@ -1224,13 +1235,19 @@ class Firewall(object):
+         # for the old backend that was set to DROP above.
+         if not self._panic and old_firewall_backend != self._firewall_backend:
+             if old_firewall_backend == "nftables":
+-                for rule in self.nftables_backend.build_set_policy_rules("ACCEPT"):
++                for rule in self._set_policy_build_rules(
++                    self.nftables_backend, "ACCEPT"
++                ):
+                     self.nftables_backend.set_rule(rule, self._log_denied)
+             else:
+-                for rule in self.ip4tables_backend.build_set_policy_rules("ACCEPT"):
++                for rule in self._set_policy_build_rules(
++                    self.ip4tables_backend, "ACCEPT"
++                ):
+                     self.ip4tables_backend.set_rule(rule, self._log_denied)
+                 if self.ip6tables_enabled:
+-                    for rule in self.ip6tables_backend.build_set_policy_rules("ACCEPT"):
++                    for rule in self._set_policy_build_rules(
++                        self.ip6tables_backend, "ACCEPT"
++                    ):
+                         self.ip6tables_backend.set_rule(rule, self._log_denied)
+ 
+         if start_exception:
+diff --git a/src/firewall/core/ipXtables.py b/src/firewall/core/ipXtables.py
+index e05a2bd4d7ed..1a0cea7a3b4e 100644
+--- a/src/firewall/core/ipXtables.py
++++ b/src/firewall/core/ipXtables.py
+@@ -578,7 +578,7 @@ class ip4tables(object):
+                 rules.append(["-t", table, flag])
+         return rules
+ 
+-    def build_set_policy_rules(self, policy):
++    def build_set_policy_rules(self, policy, policy_details):
+         rules = []
+         _policy = "DROP" if policy == "PANIC" else policy
+         for table in BUILT_IN_CHAINS.keys():
+@@ -587,7 +587,14 @@ class ip4tables(object):
+             if table == "nat":
+                 continue
+             for chain in BUILT_IN_CHAINS[table]:
+-                rules.append(["-t", table, "-P", chain, _policy])
++                if table == "filter":
++                    p = policy_details[chain]
++                    if p == "REJECT":
++                        rules.append(["-t", table, "-A", chain, "-j", "REJECT"])
++                        p = "DROP"
++                else:
++                    p = _policy
++                rules.append(["-t", table, "-P", chain, p])
+         return rules
+ 
+     def supported_icmp_types(self, ipv=None):
+diff --git a/src/firewall/core/nftables.py b/src/firewall/core/nftables.py
+index 690a5dc067ab..e9816147ef8e 100644
+--- a/src/firewall/core/nftables.py
++++ b/src/firewall/core/nftables.py
+@@ -421,20 +421,17 @@ class nftables(object):
+ 
+         return self._build_delete_table_rules(TABLE_NAME)
+ 
+-    def _build_set_policy_rules_ct_rules(self, enable):
++    def _build_set_policy_rules_ct_rule(self, enable, hook):
+         add_del = { True: "add", False: "delete" }[enable]
+-        rules = []
+-        for hook in ["input", "forward", "output"]:
+-            rules.append({add_del: {"rule": {"family": "inet",
+-                                             "table": TABLE_NAME_POLICY,
+-                                             "chain": "%s_%s" % ("filter", hook),
+-                                             "expr": [{"match": {"left": {"ct": {"key": "state"}},
+-                                                                 "op": "in",
+-                                                                 "right": {"set": ["established", "related"]}}},
+-                                                      {"accept": None}]}}})
+-        return rules
+-
+-    def build_set_policy_rules(self, policy):
++        return {add_del: {"rule": {"family": "inet",
++                                   "table": TABLE_NAME_POLICY,
++                                   "chain": "%s_%s" % ("filter", hook),
++                                   "expr": [{"match": {"left": {"ct": {"key": "state"}},
++                                                       "op": "in",
++                                                       "right": {"set": ["established", "related"]}}},
++                                            {"accept": None}]}}}
++
++    def build_set_policy_rules(self, policy, policy_details):
+         # Policy is not exposed to the user. It's only to make sure we DROP
+         # packets while reloading and for panic mode. As such, using hooks with
+         # a higher priority than our base chains is sufficient.
+@@ -459,16 +456,43 @@ class nftables(object):
+ 
+             # To drop everything except existing connections we use
+             # "filter" because it occurs _after_ conntrack.
+-            for hook in ["input", "forward", "output"]:
++            for hook in ("INPUT", "FORWARD", "OUTPUT"):
++                d_policy = policy_details[hook]
++                assert d_policy in ("ACCEPT", "REJECT", "DROP")
++                hook = hook.lower()
++                chain_name = f"filter_{hook}"
++
+                 rules.append({"add": {"chain": {"family": "inet",
+                                                 "table": TABLE_NAME_POLICY,
+-                                                "name": "%s_%s" % ("filter", hook),
++                                                "name": chain_name,
+                                                 "type": "filter",
+                                                 "hook": hook,
+                                                 "prio": 0 + NFT_HOOK_OFFSET - 1,
+                                                 "policy": "drop"}}})
+ 
+-            rules += self._build_set_policy_rules_ct_rules(True)
++                rules.append(self._build_set_policy_rules_ct_rule(True, hook))
++
++                if d_policy == "ACCEPT":
++                    expr_fragment = {"accept": None}
++                elif d_policy == "DROP":
++                    expr_fragment = {"drop": None}
++                else:
++                    expr_fragment = {
++                        "reject": {"type": "icmpx", "expr": "admin-prohibited"}
++                    }
++
++                rules.append(
++                    {
++                        "add": {
++                            "rule": {
++                                "family": "inet",
++                                "table": TABLE_NAME_POLICY,
++                                "chain": chain_name,
++                                "expr": [expr_fragment],
++                            }
++                        }
++                    }
++                )
+         elif policy == "ACCEPT":
+             rules += self._build_delete_table_rules(TABLE_NAME_POLICY)
+         else:
+-- 
+2.43.5
+

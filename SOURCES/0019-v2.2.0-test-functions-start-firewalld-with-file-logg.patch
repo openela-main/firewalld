@@ -1,0 +1,31 @@
+From e031ce8e41d2fc23735be91f7070127f8812b490 Mon Sep 17 00:00:00 2001
+From: Eric Garver <eric@garver.life>
+Date: Fri, 21 Jun 2024 16:17:44 -0400
+Subject: [PATCH 19/22] v2.2.0: test(functions): start firewalld with file
+ logging
+
+This is a test environment. Trying to log to syslog does not make sense.
+The default, mixed, sends to both file and syslog, but with different
+log level settings.
+
+(cherry picked from commit 5e0c28d5f7f71a216485169610d8c72a3a3518d1)
+---
+ src/tests/functions.at | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/tests/functions.at b/src/tests/functions.at
+index b2372dd4075b..d1c89ed5b982 100644
+--- a/src/tests/functions.at
++++ b/src/tests/functions.at
+@@ -9,7 +9,7 @@ m4_define([FWD_STOP_FIREWALLD], [
+ ])
+ 
+ m4_define([FWD_START_FIREWALLD], [
+-    FIREWALLD_ARGS="--nofork --nopid --log-file ./firewalld.log --system-config ./"
++    FIREWALLD_ARGS="--nofork --nopid --log-file ./firewalld.log --log-target file --system-config ./"
+     dnl if testsuite ran with debug flag, add debug output
+     ${at_debug_p} && FIREWALLD_ARGS="--debug=9 ${FIREWALLD_ARGS}"
+     if test "x${FIREWALLD_DEFAULT_CONFIG}" != x ; then
+-- 
+2.43.5
+

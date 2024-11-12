@@ -1,0 +1,51 @@
+From c1620d5ad4c151382373a138ab0c36dd7561a4bb Mon Sep 17 00:00:00 2001
+From: Eric Garver <eric@garver.life>
+Date: Tue, 14 May 2024 16:29:50 -0400
+Subject: [PATCH 13/22] v2.2.0: test(rpfilter): use CHECK macros
+
+(cherry picked from commit 352f3fc7fc00b675178de1eff8f0197607741de7)
+---
+ src/tests/features/rpfilter.at | 27 +++++++++++----------------
+ 1 file changed, 11 insertions(+), 16 deletions(-)
+
+diff --git a/src/tests/features/rpfilter.at b/src/tests/features/rpfilter.at
+index 01fb81ea75ef..ccc8a6cf5e80 100644
+--- a/src/tests/features/rpfilter.at
++++ b/src/tests/features/rpfilter.at
+@@ -1,22 +1,17 @@
+-FWD_START_TEST([rpfilter])
++FWD_START_TEST([rpfilter - strict])
+ AT_KEYWORDS(rpfilter)
++CHECK_NFTABLES_FIB()
+ 
+-IF_HOST_SUPPORTS_NFT_FIB([
+-    NFT_LIST_RULES([inet], [filter_PREROUTING], 0, [dnl
+-        table inet firewalld {
+-            chain filter_PREROUTING {
+-                icmpv6 type { nd-router-advert, nd-neighbor-solicit } accept
+-                meta nfproto ipv6 fib saddr . mark . iif oif missing drop
+-            }
+-        }
+-    ])
+-], [
+-    NFT_LIST_RULES([inet], [filter_PREROUTING], 0, [dnl
+-        table inet firewalld {
+-            chain filter_PREROUTING {
+-            }
++AT_CHECK([sed -i 's/^IPv6_rpfilter.*/IPv6_rpfilter=yes/' ./firewalld.conf])
++FWD_RELOAD()
++
++NFT_LIST_RULES([inet], [filter_PREROUTING], 0, [dnl
++    table inet firewalld {
++        chain filter_PREROUTING {
++            icmpv6 type { nd-router-advert, nd-neighbor-solicit } accept
++            meta nfproto ipv6 fib saddr . mark . iif oif missing drop
+         }
+-    ])
++    }
+ ])
+ 
+ IP6TABLES_LIST_RULES([mangle], [PREROUTING], 0, [dnl
+-- 
+2.43.5
+

@@ -1,0 +1,41 @@
+From 0ba1eed533e4cd1dd77771ba7c16dc0edcea841e Mon Sep 17 00:00:00 2001
+From: Eric Garver <eric@garver.life>
+Date: Mon, 13 May 2024 13:53:55 -0400
+Subject: [PATCH 14/22] v2.2.0: test(IPv6_rpfilter): verify valid values
+
+Including the deprecated "yes" value.
+
+(cherry picked from commit 1e91792157d36355669b4f02a82c1ee603a9467d)
+---
+ src/tests/features/rpfilter.at | 18 +++++++++++++++++-
+ 1 file changed, 17 insertions(+), 1 deletion(-)
+
+diff --git a/src/tests/features/rpfilter.at b/src/tests/features/rpfilter.at
+index ccc8a6cf5e80..755d9dfd33cc 100644
+--- a/src/tests/features/rpfilter.at
++++ b/src/tests/features/rpfilter.at
+@@ -22,4 +22,20 @@ IP6TABLES_LIST_RULES([mangle], [PREROUTING], 0, [dnl
+     PREROUTING_ZONES 0 -- ::/0 ::/0
+ ])
+ 
+-FWD_END_TEST
++FWD_END_TEST()
++
++FWD_START_TEST([rpfilter - config values])
++AT_KEYWORDS(rpfilter)
++CHECK_NFTABLES_FIB()
++
++dnl Verify other/deprecated configuration values are accepted.
++dnl
++m4_foreach([VALUE], [[no], [yes], [false], [true]], [
++    AT_CHECK([sed -i 's/^IPv6_rpfilter.*/IPv6_rpfilter=VALUE/' ./firewalld.conf])
++    FWD_RELOAD()
++])
++dnl And a bogus one.
++AT_CHECK([sed -i 's/^IPv6_rpfilter.*/IPv6_rpfilter=bogus/' ./firewalld.conf])
++FWD_RELOAD()
++
++FWD_END_TEST([-e "/^WARNING: IPv6_rpfilter 'bogus' is not valid/d"])
+-- 
+2.43.5
+

@@ -1,0 +1,336 @@
+From 7973ddf8d9f972f0292c8c865da9e0ebaefd77cb Mon Sep 17 00:00:00 2001
+From: Eric Garver <eric@garver.life>
+Date: Thu, 16 May 2024 09:26:43 -0400
+Subject: [PATCH 15/22] v2.2.0: chore(IPv6_rpfilter): prepare for new config
+ values
+
+This is just prep work for supporting other configuration values. This
+commits supports using "strict" as a value which is synonymous with
+"yes" and is the current default behavior.
+
+(cherry picked from commit cd959f21a5ceb41057b76f817b0456c281408ae0)
+---
+ config/firewalld.conf                  | 15 ++++++++++-----
+ doc/xml/firewalld.conf.xml             | 12 +++++++++---
+ doc/xml/firewalld.dbus.xml             |  8 ++++++--
+ src/firewall/config/__init__.py.in     |  3 ++-
+ src/firewall/core/fw.py                | 19 ++++++++-----------
+ src/firewall/core/io/firewalld_conf.py | 14 ++++++++------
+ src/firewall/server/config.py          | 22 ++++++++++++++++++----
+ src/firewall/server/firewalld.py       |  2 +-
+ src/tests/dbus/firewalld.conf.at       |  4 ++++
+ src/tests/features/rpfilter.at         |  2 +-
+ 10 files changed, 67 insertions(+), 34 deletions(-)
+
+diff --git a/config/firewalld.conf b/config/firewalld.conf
+index 7a0be1ff1b76..48e2a5a6527a 100644
+--- a/config/firewalld.conf
++++ b/config/firewalld.conf
+@@ -26,14 +26,19 @@ CleanupModulesOnExit=no
+ Lockdown=no
+ 
+ # IPv6_rpfilter
+-# Performs a reverse path filter test on a packet for IPv6. If a reply to the
+-# packet would be sent via the same interface that the packet arrived on, the
+-# packet will match and be accepted, otherwise dropped.
++# Performs reverse path filtering (RPF) on IPv6 packets as per RFC 3704.
++# Possible values:
++#   - strict: Performs "strict" filtering as per RFC 3704. This check
++#             verifies that the in ingress interface is the same interface
++#             that would be used to send a packet reply to the source. That
++#             is, ingress == egress.      
++#   - no: RPF is completely disabled.
++#
+ # The rp_filter for IPv4 is controlled using sysctl.
+ # Note: This feature has a performance impact. See man page FIREWALLD.CONF(5)
+ # for details.
+-# Default: yes
+-IPv6_rpfilter=yes
++# Default: strict
++IPv6_rpfilter=strict
+ 
+ # IndividualCalls
+ # Do not use combined -restore calls, but individual calls. This increases the
+diff --git a/doc/xml/firewalld.conf.xml b/doc/xml/firewalld.conf.xml
+index 022569ccf502..be6972aa0d8a 100644
+--- a/doc/xml/firewalld.conf.xml
++++ b/doc/xml/firewalld.conf.xml
+@@ -121,9 +121,15 @@
+ 	<term><option>IPv6_rpfilter</option></term>
+         <listitem>
+ 	  <para>
+-	    If this option is enabled (it is by default), reverse path filter test on a packet for IPv6 is performed.
+-	    If a reply to the packet would be sent via the same interface that the packet arrived on, the packet will match and be accepted, otherwise dropped.
+-            For IPv4 the rp_filter is controlled using sysctl.
++	    Performs reverse path filtering (RPF) on IPv6 packets as per RFC 3704.
++	    Possible values:
++	      - strict: Performs "strict" filtering as per RFC 3704. This check
++	                verifies that the in ingress interface is the same interface
++	                that would be used to send a packet reply to the source. That
++	                is, ingress == egress.      
++	      - no: RPF is completely disabled.
++
++	    The rp_filter for IPv4 is controlled using sysctl.
+ 	  </para>
+       <para>
+         <emphasis role="bold">Note</emphasis>: This feature has a performance
+diff --git a/doc/xml/firewalld.dbus.xml b/doc/xml/firewalld.dbus.xml
+index a3196ea4af38..f04cf5ae757b 100644
+--- a/doc/xml/firewalld.dbus.xml
++++ b/doc/xml/firewalld.dbus.xml
+@@ -2858,8 +2858,12 @@
+             </listitem>
+           </varlistentry>
+           <varlistentry id="FirewallD1.config.Properties.IPv6_rpfilter">
+-            <term><parameter>IPv6_rpfilter</parameter> - s - (rw)</term>
+-            <listitem><para>Indicates whether the reverse path filter test on a packet for IPv6 is enabled. If a reply to the packet would be sent via the same interface that the packet arrived on, the packet will match and be accepted, otherwise dropped.</para></listitem>
++            <term><parameter>IPv6_rpfilter</parameter> - b - (rw)</term>
++            <listitem><para>Deprecated. See <link linkend="FirewallD1.config.Properties.IPv6_rpfilter2">org.fedoraproject.FirewallD1.config.Properties.IPv6_rpfilter2</link>.</para></listitem>
++          </varlistentry>
++          <varlistentry id="FirewallD1.config.Properties.IPv6_rpfilter2">
++            <term><parameter>IPv6_rpfilter2</parameter> - s - (rw)</term>
++            <listitem><para>Indicates whether the reverse path filter (RFE 3704) test on a packet for IPv6 is enabled.</para></listitem>
+           </varlistentry>
+           <varlistentry id="FirewallD1.config.Properties.IndividualCalls">
+             <term><parameter>IndividualCalls</parameter> - s - (ro)</term>
+diff --git a/src/firewall/config/__init__.py.in b/src/firewall/config/__init__.py.in
+index da1e31e10e58..68e9bddce5a8 100644
+--- a/src/firewall/config/__init__.py.in
++++ b/src/firewall/config/__init__.py.in
+@@ -120,6 +120,7 @@ COMMANDS = {
+ LOG_DENIED_VALUES = [ "all", "unicast", "broadcast", "multicast", "off" ]
+ AUTOMATIC_HELPERS_VALUES = [ "yes", "no", "system" ]
+ FIREWALL_BACKEND_VALUES = [ "nftables", "iptables" ]
++IPV6_RPFILTER_VALUES = ["yes", "true", "no", "false", "strict"]
+ 
+ # fallbacks: will be overloaded by firewalld.conf
+ FALLBACK_ZONE = "public"
+@@ -127,7 +128,7 @@ FALLBACK_MINIMAL_MARK = 100
+ FALLBACK_CLEANUP_ON_EXIT = True
+ FALLBACK_CLEANUP_MODULES_ON_EXIT = False
+ FALLBACK_LOCKDOWN = False
+-FALLBACK_IPV6_RPFILTER = True
++FALLBACK_IPV6_RPFILTER = "strict"
+ FALLBACK_INDIVIDUAL_CALLS = False
+ FALLBACK_LOG_DENIED = "off"
+ FALLBACK_AUTOMATIC_HELPERS = "no"
+diff --git a/src/firewall/core/fw.py b/src/firewall/core/fw.py
+index ac13be122b66..b2e150077958 100644
+--- a/src/firewall/core/fw.py
++++ b/src/firewall/core/fw.py
+@@ -98,7 +98,7 @@ class Firewall(object):
+              self.ebtables_enabled, self._state, self._panic,
+              self._default_zone, self._module_refcount, self._marks,
+              self.cleanup_on_exit, self.cleanup_modules_on_exit,
+-             self.ipv6_rpfilter_enabled, self.ipset_enabled,
++             self._ipv6_rpfilter, self.ipset_enabled,
+              self._individual_calls, self._log_denied)
+ 
+     def __init_vars(self):
+@@ -112,7 +112,7 @@ class Firewall(object):
+         # fallback settings will be overloaded by firewalld.conf
+         self.cleanup_on_exit = config.FALLBACK_CLEANUP_ON_EXIT
+         self.cleanup_modules_on_exit = config.FALLBACK_CLEANUP_MODULES_ON_EXIT
+-        self.ipv6_rpfilter_enabled = config.FALLBACK_IPV6_RPFILTER
++        self._ipv6_rpfilter = config.FALLBACK_IPV6_RPFILTER
+         self._individual_calls = config.FALLBACK_INDIVIDUAL_CALLS
+         self._log_denied = config.FALLBACK_LOG_DENIED
+         self._firewall_backend = config.FALLBACK_FIREWALL_BACKEND
+@@ -329,14 +329,11 @@ class Firewall(object):
+             if self._firewalld_conf.get("IPv6_rpfilter"):
+                 value = self._firewalld_conf.get("IPv6_rpfilter")
+                 if value is not None:
+-                    if value.lower() in [ "no", "false" ]:
+-                        self.ipv6_rpfilter_enabled = False
+-                    if value.lower() in [ "yes", "true" ]:
+-                        self.ipv6_rpfilter_enabled = True
+-            if self.ipv6_rpfilter_enabled:
+-                log.debug1("IPv6 rpfilter is enabled")
+-            else:
+-                log.debug1("IPV6 rpfilter is disabled")
++                    if value.lower() in ["no", "false"]:
++                        self._ipv6_rpfilter = "no"
++                    elif value.lower() in ["yes", "true", "strict"]:
++                        self._ipv6_rpfilter = "strict"
++                log.debug1(f"IPv6_rpfilter is set to '{self._ipv6_rpfilter}'")
+ 
+             if self._firewalld_conf.get("IndividualCalls"):
+                 value = self._firewalld_conf.get("IndividualCalls")
+@@ -933,7 +930,7 @@ class Firewall(object):
+         if self.is_ipv_enabled("ipv6"):
+             ipv6_backend = self.get_backend_by_ipv("ipv6")
+             if "raw" in ipv6_backend.get_available_tables():
+-                if self.ipv6_rpfilter_enabled:
++                if self._ipv6_rpfilter != "no":
+                     rules = ipv6_backend.build_rpfilter_rules(self._log_denied)
+                     transaction.add_rules(ipv6_backend, rules)
+ 
+diff --git a/src/firewall/core/io/firewalld_conf.py b/src/firewall/core/io/firewalld_conf.py
+index d2879b319d1f..9ad64883b656 100644
+--- a/src/firewall/core/io/firewalld_conf.py
++++ b/src/firewall/core/io/firewalld_conf.py
+@@ -71,7 +71,7 @@ class firewalld_conf(object):
+         self.set("CleanupOnExit", "yes" if config.FALLBACK_CLEANUP_ON_EXIT else "no")
+         self.set("CleanupModulesOnExit", "yes" if config.FALLBACK_CLEANUP_MODULES_ON_EXIT else "no")
+         self.set("Lockdown", "yes" if config.FALLBACK_LOCKDOWN else "no")
+-        self.set("IPv6_rpfilter","yes" if config.FALLBACK_IPV6_RPFILTER else "no")
++        self.set("IPv6_rpfilter", config.FALLBACK_IPV6_RPFILTER)
+         self.set("IndividualCalls", "yes" if config.FALLBACK_INDIVIDUAL_CALLS else "no")
+         self.set("LogDenied", config.FALLBACK_LOG_DENIED)
+         self.set("AutomaticHelpers", config.FALLBACK_AUTOMATIC_HELPERS)
+@@ -160,12 +160,14 @@ class firewalld_conf(object):
+ 
+         # check ipv6_rpfilter
+         value = self.get("IPv6_rpfilter")
+-        if not value or value.lower() not in [ "yes", "true", "no", "false" ]:
++        if not value or value.lower() not in config.IPV6_RPFILTER_VALUES:
+             if value is not None:
+-                log.warning("IPv6_rpfilter '%s' is not valid, using default "
+-                            "value %s", value if value else '',
+-                            config.FALLBACK_IPV6_RPFILTER)
+-            self.set("IPv6_rpfilter","yes" if config.FALLBACK_IPV6_RPFILTER else "no")
++                log.warning(
++                    "IPv6_rpfilter '%s' is not valid, using default " "value %s",
++                    value if value else "",
++                    config.FALLBACK_IPV6_RPFILTER,
++                )
++            self.set("IPv6_rpfilter", config.FALLBACK_IPV6_RPFILTER)
+ 
+         # check individual calls
+         value = self.get("IndividualCalls")
+diff --git a/src/firewall/server/config.py b/src/firewall/server/config.py
+index dfbbb889b520..b805e497bb05 100644
+--- a/src/firewall/server/config.py
++++ b/src/firewall/server/config.py
+@@ -100,6 +100,7 @@ class FirewallDConfig(DbusServiceObject):
+                 "CleanupOnExit": "readwrite",
+                 "CleanupModulesOnExit": "readwrite",
+                 "IPv6_rpfilter": "readwrite",
++                "IPv6_rpfilter2": "readwrite",
+                 "Lockdown": "readwrite",
+                 "MinimalMark": "readwrite",
+                 "IndividualCalls": "readwrite",
+@@ -564,7 +565,7 @@ class FirewallDConfig(DbusServiceObject):
+                          "CleanupModulesOnExit", "Lockdown", "IPv6_rpfilter",
+                          "IndividualCalls", "LogDenied", "AutomaticHelpers",
+                          "FirewallBackend", "FlushAllOnReload", "RFC3964_IPv4",
+-                         "AllowZoneDrifting" ]:
++                         "AllowZoneDrifting", "IPv6_rpfilter2" ]:
+             raise dbus.exceptions.DBusException(
+                 "org.freedesktop.DBus.Error.InvalidArgs: "
+                 "Property '%s' does not exist" % prop)
+@@ -594,8 +595,13 @@ class FirewallDConfig(DbusServiceObject):
+                 value = "yes" if config.FALLBACK_LOCKDOWN else "no"
+             return dbus.String(value)
+         elif prop == "IPv6_rpfilter":
++            if value is None or value != "no":
++                return dbus.String("yes")
++            else:
++                return dbus.String("no")
++        elif prop == "IPv6_rpfilter2":
+             if value is None:
+-                value = "yes" if config.FALLBACK_IPV6_RPFILTER else "no"
++                value = config.FALLBACK_IPV6_RPFILTER
+             return dbus.String(value)
+         elif prop == "IndividualCalls":
+             if value is None:
+@@ -640,6 +646,8 @@ class FirewallDConfig(DbusServiceObject):
+             return dbus.String(self._get_property(prop))
+         elif prop == "IPv6_rpfilter":
+             return dbus.String(self._get_property(prop))
++        elif prop == "IPv6_rpfilter2":
++            return dbus.String(self._get_property(prop))
+         elif prop == "IndividualCalls":
+             return dbus.String(self._get_property(prop))
+         elif prop == "LogDenied":
+@@ -693,7 +701,7 @@ class FirewallDConfig(DbusServiceObject):
+                        "CleanupModulesOnExit", "Lockdown", "IPv6_rpfilter",
+                        "IndividualCalls", "LogDenied", "AutomaticHelpers",
+                        "FirewallBackend", "FlushAllOnReload", "RFC3964_IPv4",
+-                       "AllowZoneDrifting" ]:
++                       "AllowZoneDrifting", "IPv6_rpfilter2" ]:
+                 ret[x] = self._get_property(x)
+         elif interface_name in [ config.dbus.DBUS_INTERFACE_CONFIG_DIRECT,
+                                  config.dbus.DBUS_INTERFACE_CONFIG_POLICIES ]:
+@@ -722,7 +730,7 @@ class FirewallDConfig(DbusServiceObject):
+                                   "IPv6_rpfilter", "IndividualCalls",
+                                   "LogDenied",
+                                   "FirewallBackend", "FlushAllOnReload",
+-                                  "RFC3964_IPv4"]:
++                                  "RFC3964_IPv4", "IPv6_rpfilter2"]:
+                 if property_name in [ "CleanupOnExit", "CleanupModulesOnExit",
+                                       "Lockdown", "IPv6_rpfilter",
+                                       "IndividualCalls", "FlushAllOnReload",
+@@ -742,6 +750,12 @@ class FirewallDConfig(DbusServiceObject):
+                         raise FirewallError(errors.INVALID_VALUE,
+                                             "'%s' for %s" % \
+                                             (new_value, property_name))
++                elif property_name == "IPv6_rpfilter2":
++                    if new_value not in config.IPV6_RPFILTER_VALUES:
++                        raise FirewallError(
++                            errors.INVALID_VALUE,
++                            "'%s' for %s" % (new_value, property_name),
++                        )
+                 else:
+                     raise dbus.exceptions.DBusException(
+                         "org.freedesktop.DBus.Error.InvalidArgs: "
+diff --git a/src/firewall/server/firewalld.py b/src/firewall/server/firewalld.py
+index e43ddb959f41..8b9593a22fd8 100644
+--- a/src/firewall/server/firewalld.py
++++ b/src/firewall/server/firewalld.py
+@@ -165,7 +165,7 @@ class FirewallD(DbusServiceObject):
+             return dbus.Boolean(self.fw.is_ipv_enabled("ipv6"))
+ 
+         elif prop == "IPv6_rpfilter":
+-            return dbus.Boolean(self.fw.ipv6_rpfilter_enabled)
++            return dbus.Boolean(False if self.fw._ipv6_rpfilter == "no" else True)
+ 
+         elif prop == "IPv6ICMPTypes":
+             return dbus.Array(self.fw.ipv6_supported_icmp_types, "s")
+diff --git a/src/tests/dbus/firewalld.conf.at b/src/tests/dbus/firewalld.conf.at
+index 10b16cd9e06f..61c220f3e59c 100644
+--- a/src/tests/dbus/firewalld.conf.at
++++ b/src/tests/dbus/firewalld.conf.at
+@@ -3,8 +3,10 @@ AT_KEYWORDS(dbus)
+ 
+ IF_HOST_SUPPORTS_NFT_FIB([
+    EXPECTED_IPV6_RPFILTER_VALUE=yes
++   EXPECTED_IPV6_RPFILTER2_VALUE=strict
+ ], [
+    EXPECTED_IPV6_RPFILTER_VALUE=no
++   EXPECTED_IPV6_RPFILTER2_VALUE=no
+ ])
+ 
+ IF_HOST_SUPPORTS_NFT_RULE_INDEX([
+@@ -23,6 +25,7 @@ string "DefaultZone" : variant string "public"
+ string "FirewallBackend" : variant string "nftables"
+ string "FlushAllOnReload" : variant string "yes"
+ string "IPv6_rpfilter" : variant string m4_escape(["${EXPECTED_IPV6_RPFILTER_VALUE}"])
++string "IPv6_rpfilter2" : variant string m4_escape(["${EXPECTED_IPV6_RPFILTER2_VALUE}"])
+ string "IndividualCalls" : variant string m4_escape(["${EXPECTED_INDIVIDUAL_CALLS_VALUE}"])
+ string "Lockdown" : variant string "no"
+ string "LogDenied" : variant string "off"
+@@ -43,6 +46,7 @@ _helper([AutomaticHelpers], [string:"yes"], [variant string "no"])
+ _helper([Lockdown], [string:"yes"], [variant string "yes"])
+ _helper([LogDenied], [string:"all"], [variant string "all"])
+ _helper([IPv6_rpfilter], [string:"yes"], [variant string "yes"])
++_helper([IPv6_rpfilter2], [string:"no"], [variant string "no"])
+ _helper([IndividualCalls], [string:"yes"], [variant string "yes"])
+ _helper([FirewallBackend], [string:"iptables"], [variant string "iptables"])
+ _helper([FlushAllOnReload], [string:"no"], [variant string "no"])
+diff --git a/src/tests/features/rpfilter.at b/src/tests/features/rpfilter.at
+index 755d9dfd33cc..58a4b4500330 100644
+--- a/src/tests/features/rpfilter.at
++++ b/src/tests/features/rpfilter.at
+@@ -2,7 +2,7 @@ FWD_START_TEST([rpfilter - strict])
+ AT_KEYWORDS(rpfilter)
+ CHECK_NFTABLES_FIB()
+ 
+-AT_CHECK([sed -i 's/^IPv6_rpfilter.*/IPv6_rpfilter=yes/' ./firewalld.conf])
++AT_CHECK([sed -i 's/^IPv6_rpfilter.*/IPv6_rpfilter=strict/' ./firewalld.conf])
+ FWD_RELOAD()
+ 
+ NFT_LIST_RULES([inet], [filter_PREROUTING], 0, [dnl
+-- 
+2.43.5
+
