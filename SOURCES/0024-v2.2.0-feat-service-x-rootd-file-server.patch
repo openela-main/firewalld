@@ -1,0 +1,52 @@
+From 8f42ac0312b5a90c0641a7dedd05e37cfa70b40a Mon Sep 17 00:00:00 2001
+From: Pat Riehecky <riehecky@fnal.gov>
+Date: Thu, 16 May 2024 13:17:15 -0500
+Subject: [PATCH 24/24] v2.2.0: feat(service): (x)rootd file server
+
+(cherry picked from commit 365fdcd0f73785cb8ce6a5e4ee225e6fd23dc003)
+---
+ config/Makefile.am        | 1 +
+ config/services/rootd.xml | 6 ++++++
+ po/POTFILES.in            | 1 +
+ 3 files changed, 8 insertions(+)
+ create mode 100644 config/services/rootd.xml
+
+diff --git a/config/Makefile.am b/config/Makefile.am
+index edae25fd9de0..711f05afb799 100644
+--- a/config/Makefile.am
++++ b/config/Makefile.am
+@@ -280,6 +280,7 @@ CONFIG_FILES = \
+ 	services/RH-Satellite-6.xml \
+ 	services/RH-Satellite-6-capsule.xml \
+ 	services/rpc-bind.xml \
++	services/rootd.xml \
+ 	services/rquotad.xml \
+ 	services/rsh.xml \
+ 	services/rsyncd.xml \
+diff --git a/config/services/rootd.xml b/config/services/rootd.xml
+new file mode 100644
+index 000000000000..cf8e99ff8179
+--- /dev/null
++++ b/config/services/rootd.xml
+@@ -0,0 +1,6 @@
++<?xml version="1.0" encoding="utf-8"?>
++<service>
++  <short>rootd</short>
++  <description>The (x)rootd server was developed for the root analysis framework to serve root files. However, the server is agnostic to file types and provides POSIX-like access to any type of file.</description>
++  <port protocol="tcp" port="1094"/>
++</service>
+diff --git a/po/POTFILES.in b/po/POTFILES.in
+index adeebdee3f55..a03ff0ce1df3 100644
+--- a/po/POTFILES.in
++++ b/po/POTFILES.in
+@@ -213,6 +213,7 @@ config/services/redis.xml
+ config/services/RH-Satellite-6.xml
+ config/services/RH-Satellite-6-capsule.xml
+ config/services/rpc-bind.xml
++config/services/rootd.xml
+ config/services/rquotad.xml
+ config/services/rsh.xml
+ config/services/rsyncd.xml
+-- 
+2.43.5
+

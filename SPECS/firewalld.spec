@@ -1,7 +1,7 @@
 Summary: A firewall daemon with D-Bus interface providing a dynamic firewall
 Name: firewalld
 Version: 1.3.4
-Release: 7%{?dist}
+Release: 9%{?dist}
 URL:     http://www.firewalld.org
 License: GPLv2+
 Source0: https://github.com/firewalld/firewalld/releases/download/v%{version}/firewalld-%{version}.tar.bz2
@@ -27,6 +27,8 @@ Patch19: 0019-v2.2.0-test-functions-start-firewalld-with-file-logg.patch
 Patch20: 0020-v2.2.0-feat-nftables-table-ownership.patch
 Patch21: 0021-v2.2.0-test-nftables-table-ownership.patch
 Patch22: 0022-v2.2.0-chore-service-remove-Conflicts-with-nftables.patch
+Patch23: 0023-v2.2.0-fix-service-update-highest-port-number-for-ce.patch
+Patch24: 0024-v2.2.0-feat-service-x-rootd-file-server.patch
 BuildArch: noarch
 BuildRequires: autoconf
 BuildRequires: automake
@@ -250,6 +252,12 @@ rm -rf %{buildroot}%{_datadir}/firewalld/testsuite
 %{_mandir}/man1/firewall-config*.1*
 
 %changelog
+* Wed Nov 06 2024 Eric Garver <egarver@redhat.com> - 1.3.4-9
+- feat(service): (x)rootd file server
+
+* Wed Nov 06 2024 Eric Garver <egarver@redhat.com> - 1.3.4-8
+- fix(service): update highest port number for ceph
+
 * Mon Jul 01 2024 Eric Garver <egarver@redhat.com> - 1.3.4-7
 - feat(nftables): table ownership
 
