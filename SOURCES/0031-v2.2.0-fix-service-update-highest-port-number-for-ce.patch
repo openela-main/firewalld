@@ -1,0 +1,29 @@
+From 4c95c843cd21f618677fe4d047b187facb00d027 Mon Sep 17 00:00:00 2001
+From: Pierre Riteau <pierre@stackhpc.com>
+Date: Mon, 22 Apr 2024 11:50:25 +0200
+Subject: [PATCH] v2.2.0: fix(service): update highest port number for ceph
+
+The highest port number used by Ceph was updated in
+https://github.com/ceph/ceph/pull/42210.
+
+Fixes https://github.com/firewalld/firewalld/issues/1329
+
+(cherry picked from commit f514a3ea4b59a0be11467d1b68a992329b6dc8dd)
+---
+ config/services/ceph.xml | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/config/services/ceph.xml b/config/services/ceph.xml
+index efed53691afd..eb6a3f2d1e3d 100644
+--- a/config/services/ceph.xml
++++ b/config/services/ceph.xml
+@@ -2,5 +2,5 @@
+ <service>
+   <short>ceph</short>
+   <description>Ceph is a distributed object store and file system. Enable this option to support Ceph's Object Storage Daemons (OSD), Metadata Server Daemons (MDS), or Manager Daemons (MGR).</description>
+-  <port protocol="tcp" port="6800-7300"/>
++  <port protocol="tcp" port="6800-7568"/>
+ </service>
+-- 
+2.43.0
+

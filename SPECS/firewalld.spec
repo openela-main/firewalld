@@ -1,7 +1,7 @@
 Summary: A firewall daemon with D-Bus interface providing a dynamic firewall
 Name: firewalld
 Version: 0.9.11
-Release: 9%{?dist}
+Release: 10%{?dist}
 URL:     http://www.firewalld.org
 License: GPLv2+
 Source0: https://github.com/firewalld/firewalld/releases/download/v%{version}/firewalld-%{version}.tar.gz
@@ -35,6 +35,7 @@ Patch27: 0027-v2.0.0-test-atlocal-pass-EBTABLES-to-testsuite.patch
 Patch28: 0028-v2.0.0-chore-direct-add-has_runtime_configuration.patch
 Patch29: 0029-v2.0.0-feat-direct-avoid-iptables-flush-if-using-nft.patch
 Patch30: 0030-v2.0.0-test-direct-avoid-iptables-flush-if-using-nft.patch
+Patch31: 0031-v2.2.0-fix-service-update-highest-port-number-for-ce.patch
 
 BuildArch: noarch
 BuildRequires: autoconf
@@ -236,6 +237,9 @@ desktop-file-install --delete-original \
 %{_mandir}/man1/firewall-config*.1*
 
 %changelog
+* Tue Feb 04 2025 Eric Garver <egarver@redhat.com> - 0.9.11-10
+- fix(service): update highest port number for ceph
+
 * Fri Aug 02 2024 Eric Garver <egarver@redhat.com> - 0.9.11-9
 - feat(direct): avoid iptables flush if using nftables backend
 
