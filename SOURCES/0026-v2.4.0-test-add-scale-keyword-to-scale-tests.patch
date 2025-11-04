@@ -1,0 +1,46 @@
+From 3a306425ecdc2b6024449404cfffaa1b11234e24 Mon Sep 17 00:00:00 2001
+From: Eric Garver <egarver@redhat.com>
+Date: Thu, 21 Nov 2024 09:21:51 -0500
+Subject: [PATCH 26/31] v2.4.0: test: add scale keyword to scale tests
+
+This allows skipping scale tests or running them separately.
+
+e.g. skip
+
+  # make check TESTSUITEFLAGS="-j6 -k !scale"
+
+e.g. run scale tests separately and serially
+
+  # make check TESTSUITEFLAGS="-k scale"
+
+(cherry picked from commit 106d3df926296163ed8a2aa7f924b4eb55b7b24f)
+---
+ src/tests/regression/ipset_scale.at | 2 +-
+ src/tests/regression/rhbz1871298.at | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/tests/regression/ipset_scale.at b/src/tests/regression/ipset_scale.at
+index 2ceef1a56816..0aef986434f0 100644
+--- a/src/tests/regression/ipset_scale.at
++++ b/src/tests/regression/ipset_scale.at
+@@ -1,5 +1,5 @@
+ FWD_START_TEST([ipset scale])
+-AT_KEYWORDS(ipset gh738)
++AT_KEYWORDS(ipset gh738 scale)
+ 
+ dnl Create a huge ipset
+ AT_CHECK([touch ./entries], 0, [ignore])
+diff --git a/src/tests/regression/rhbz1871298.at b/src/tests/regression/rhbz1871298.at
+index 3a40e2a5ae13..e9fcfe69cf88 100644
+--- a/src/tests/regression/rhbz1871298.at
++++ b/src/tests/regression/rhbz1871298.at
+@@ -1,5 +1,5 @@
+ FWD_START_TEST([rich rule parsing bottleneck])
+-AT_KEYWORDS(rich offline rhbz1871298)
++AT_KEYWORDS(rich offline rhbz1871298 scale)
+ 
+ AT_SKIP_IF([! NS_CMD([which timeout >/dev/null 2>&1])])
+ 
+-- 
+2.48.1
+

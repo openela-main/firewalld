@@ -1,0 +1,41 @@
+From 6b9c44e3fcc861342cb6624d35eac9d192ce1a2a Mon Sep 17 00:00:00 2001
+From: Eric Garver <eric@garver.life>
+Date: Fri, 2 May 2025 16:37:27 -0400
+Subject: [PATCH 31/31] v2.4.0: fix(fw): start: remove ipset probe
+
+This probe is causing kernel modules to be loaded even if the ipset
+backend will not be used due to "omit native ipsets". Since the backend
+and iptables are deprecated lets just remove the probe and let it fail
+at runtime.
+
+Fixes: RHEL-36234
+(cherry picked from commit ac20628701509165feaacab679c0699db2c7b8b8)
+---
+ src/firewall/core/fw.py | 11 -----------
+ 1 file changed, 11 deletions(-)
+
+diff --git a/src/firewall/core/fw.py b/src/firewall/core/fw.py
+index 92574bc7e650..877ad028d4e2 100644
+--- a/src/firewall/core/fw.py
++++ b/src/firewall/core/fw.py
+@@ -218,17 +218,6 @@ class Firewall(object):
+             raise FirewallError(errors.UNKNOWN_ERROR, "No IPv4 and IPv6 firewall.")
+ 
+     def _start_probe_backends(self):
+-        try:
+-            self.ipset_backend.set_list()
+-        except ValueError:
+-            if self.nftables_enabled:
+-                log.info1("ipset not usable, disabling ipset usage in firewall. Other set backends (nftables) remain usable.")
+-            else:
+-                log.warning("ipset not usable, disabling ipset usage in firewall.")
+-                self.ipset_supported_types = [ ]
+-            # ipset is not usable
+-            self.ipset_enabled = False
+-
+         self.ip4tables_backend.fill_exists()
+         if not self.ip4tables_backend.restore_command_exists:
+             if self.ip4tables_backend.command_exists:
+-- 
+2.48.1
+

@@ -1,0 +1,31 @@
+From 257dce8a7769d0b4268973065dfe0a77455d1ce6 Mon Sep 17 00:00:00 2001
+From: Eric Garver <eric@garver.life>
+Date: Mon, 2 Jun 2025 11:27:10 -0400
+Subject: [PATCH] v2.4.0: fix(systemd): allow start code 251 (RUNNING_BUT_FAILED)
+
+Do not fail to start the service if `firewall-cmd --state` returns this
+error code. The daemon is started, but in a recovery mode due to invalid
+configuration.
+
+Fixes: 4ddfe5672e3a ("fix(systemd): verify firewalld is responsive to dbus")
+(cherry picked from commit d52815e198f05378a3f34633adfedd29165cc64e)
+---
+ config/firewalld.service.in | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/config/firewalld.service.in b/config/firewalld.service.in
+index cd7f772b8581..bd8690fd87a6 100644
+--- a/config/firewalld.service.in
++++ b/config/firewalld.service.in
+@@ -11,6 +11,8 @@ Documentation=man:firewalld(1)
+ EnvironmentFile=-/etc/sysconfig/firewalld
+ ExecStart=@sbindir@/firewalld --nofork --nopid $FIREWALLD_ARGS
+ ExecStartPost=@bindir@/firewall-cmd --state
++# don't fail ExecStartPost on RUNNING_BUT_FAILED
++SuccessExitStatus=251
+ ExecReload=/bin/kill -HUP $MAINPID
+ StandardOutput=null
+ StandardError=null
+-- 
+2.47.1
+

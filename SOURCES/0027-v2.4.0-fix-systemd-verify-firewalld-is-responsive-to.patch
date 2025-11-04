@@ -1,0 +1,39 @@
+From b5ed698e4393089a55f0e81d6b687c27affaca1a Mon Sep 17 00:00:00 2001
+From: Eric Garver <eric@garver.life>
+Date: Tue, 4 Mar 2025 12:04:44 -0500
+Subject: [PATCH 27/31] v2.4.0: fix(systemd): verify firewalld is responsive to
+ dbus
+
+`systemctl start firewalld` will return as soon as firewalld claims the
+well-known bus name. However, this is too early. Signal handlers, etc.
+may not have been setup. To verify firewalld has completed its startup
+and entered the GLib mainloop use ExecStartPost to check that it's
+responsive to dbus calls. The ExecStartPost will block until its gets a
+response or times out (dbus default is 20s). On the firewalld side, the
+dbus call is buffered until the GLib mainloop handles it.
+
+This fixes a race where a `systemctl reload` immediately after a start
+could hit a timing window during which the signal handlers have not yet
+been setup, thus killing firewalld.
+
+Fixes: RHEL-77738
+(cherry picked from commit 4ddfe5672e3a51e1c081b410144155553f256e91)
+---
+ config/firewalld.service.in | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/config/firewalld.service.in b/config/firewalld.service.in
+index b757a08f28dc..1c6b8f4d78dc 100644
+--- a/config/firewalld.service.in
++++ b/config/firewalld.service.in
+@@ -10,6 +10,7 @@ Documentation=man:firewalld(1)
+ [Service]
+ EnvironmentFile=-/etc/sysconfig/firewalld
+ ExecStart=@sbindir@/firewalld --nofork --nopid $FIREWALLD_ARGS
++ExecStartPost=@bindir@/firewall-cmd --state
+ ExecReload=/bin/kill -HUP $MAINPID
+ # supress to log debug and error output also to /var/log/messages
+ StandardOutput=null
+-- 
+2.48.1
+

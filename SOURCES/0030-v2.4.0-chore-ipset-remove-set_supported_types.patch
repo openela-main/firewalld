@@ -1,0 +1,63 @@
+From c1ef9701fa5d33f2116a67f7e20c3c4f525c57f1 Mon Sep 17 00:00:00 2001
+From: Eric Garver <eric@garver.life>
+Date: Fri, 2 May 2025 16:33:14 -0400
+Subject: [PATCH 30/31] v2.4.0: chore(ipset): remove set_supported_types()
+
+"ipset --help" doesn't actual guarantee that the types are supported in
+the kernel. As such, this probe is useless.
+
+(cherry picked from commit 1e401a7d22d4d00be90330e171929c78ddd9b55b)
+---
+ src/firewall/core/fw.py    |  3 ---
+ src/firewall/core/ipset.py | 21 ---------------------
+ 2 files changed, 24 deletions(-)
+
+diff --git a/src/firewall/core/fw.py b/src/firewall/core/fw.py
+index 557b6e527dbd..92574bc7e650 100644
+--- a/src/firewall/core/fw.py
++++ b/src/firewall/core/fw.py
+@@ -228,9 +228,6 @@ class Firewall(object):
+                 self.ipset_supported_types = [ ]
+             # ipset is not usable
+             self.ipset_enabled = False
+-        else:
+-            # ipset is usable, get all supported types
+-            self.ipset_supported_types = self.ipset_backend.set_supported_types()
+ 
+         self.ip4tables_backend.fill_exists()
+         if not self.ip4tables_backend.restore_command_exists:
+diff --git a/src/firewall/core/ipset.py b/src/firewall/core/ipset.py
+index d8e0a1ab1e56..a7f0ce17a61b 100644
+--- a/src/firewall/core/ipset.py
++++ b/src/firewall/core/ipset.py
+@@ -93,27 +93,6 @@ class ipset(object):
+             raise FirewallError(errors.INVALID_NAME,
+                                 "ipset name '%s' is not valid" % name)
+ 
+-    def set_supported_types(self):
+-        """Return types that are supported by the ipset command and kernel"""
+-        ret = [ ]
+-        output = ""
+-        try:
+-            output = self.__run(["--help"])
+-        except ValueError as ex:
+-            log.debug1("ipset error: %s" % ex)
+-        lines = output.splitlines()
+-
+-        in_types = False
+-        for line in lines:
+-            #print(line)
+-            if in_types:
+-                splits = line.strip().split(None, 2)
+-                if splits[0] not in ret and splits[0] in IPSET_TYPES:
+-                    ret.append(splits[0])
+-            if line.startswith("Supported set types:"):
+-                in_types = True
+-        return ret
+-
+     def check_type(self, type_name):
+         """Check ipset type"""
+         if len(type_name) > IPSET_MAXNAMELEN or type_name not in IPSET_TYPES:
+-- 
+2.48.1
+

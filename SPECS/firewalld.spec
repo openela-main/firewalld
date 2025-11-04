@@ -1,7 +1,7 @@
 Summary: A firewall daemon with D-Bus interface providing a dynamic firewall
 Name: firewalld
 Version: 1.3.4
-Release: 9%{?dist}
+Release: 15%{?dist}
 URL:     http://www.firewalld.org
 License: GPLv2+
 Source0: https://github.com/firewalld/firewalld/releases/download/v%{version}/firewalld-%{version}.tar.bz2
@@ -29,6 +29,16 @@ Patch21: 0021-v2.2.0-test-nftables-table-ownership.patch
 Patch22: 0022-v2.2.0-chore-service-remove-Conflicts-with-nftables.patch
 Patch23: 0023-v2.2.0-fix-service-update-highest-port-number-for-ce.patch
 Patch24: 0024-v2.2.0-feat-service-x-rootd-file-server.patch
+Patch25: 0025-v2.3.0-test-functions-fix-iptables-normalization-for.patch
+Patch26: 0026-v2.4.0-test-add-scale-keyword-to-scale-tests.patch
+Patch27: 0027-v2.4.0-fix-systemd-verify-firewalld-is-responsive-to.patch
+Patch28: 0028-v2.4.0-fix-systemd-remove-unnecessary-comment.patch
+Patch29: 0029-v2.4.0-test-nftables-table-owner-use-grep-instead-of.patch
+Patch30: 0030-v2.4.0-chore-ipset-remove-set_supported_types.patch
+Patch31: 0031-v2.4.0-fix-fw-start-remove-ipset-probe.patch
+Patch32: 0032-v2.4.0-fix-systemd-allow-start-code-251-RUNNING_BUT_FAILED.patch
+Patch33: 0033-v2.4.0-fix-policy-rich-verify-ipset-exists.patch
+Patch34: 0034-v2.4.0-test-rich-rule-reference-invalid-ipset.patch
 BuildArch: noarch
 BuildRequires: autoconf
 BuildRequires: automake
@@ -252,6 +262,24 @@ rm -rf %{buildroot}%{_datadir}/firewalld/testsuite
 %{_mandir}/man1/firewall-config*.1*
 
 %changelog
+* Tue Jun 17 2025 Eric Garver <egarver@redhat.com> - 1.3.4-15
+- fix(policy): rich: verify ipset exists
+
+* Mon Jun 02 2025 Eric Garver <egarver@redhat.com> - 1.3.4-14
+- fix(systemd): allow start code 251 (RUNNING_BUT_FAILED)
+
+* Mon May 19 2025 Eric Garver <egarver@redhat.com> - 1.3.4-13
+- fix(fw): start: remove ipset probe
+
+* Mon May 19 2025 Eric Garver <egarver@redhat.com> - 1.3.4-12
+- fix(systemd): verify firewalld is responsive to dbus
+
+* Mon May 19 2025 Eric Garver <egarver@redhat.com> - 1.3.4-11
+- test: add scale keyword to scale tests
+
+* Mon May 19 2025 Eric Garver <egarver@redhat.com> - 1.3.4-10
+- test(functions): fix iptables normalization for opt field
+
 * Wed Nov 06 2024 Eric Garver <egarver@redhat.com> - 1.3.4-9
 - feat(service): (x)rootd file server
 

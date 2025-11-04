@@ -1,0 +1,25 @@
+From b61048559be0995beee05a5d61958a13f7bf1bb5 Mon Sep 17 00:00:00 2001
+From: Eric Garver <eric@garver.life>
+Date: Tue, 4 Mar 2025 12:10:46 -0500
+Subject: [PATCH 28/31] v2.4.0: fix(systemd): remove unnecessary comment
+
+(cherry picked from commit ad6f103e1d656d263116ef0178c08792e32aac84)
+---
+ config/firewalld.service.in | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/config/firewalld.service.in b/config/firewalld.service.in
+index 1c6b8f4d78dc..cd7f772b8581 100644
+--- a/config/firewalld.service.in
++++ b/config/firewalld.service.in
+@@ -12,7 +12,6 @@ EnvironmentFile=-/etc/sysconfig/firewalld
+ ExecStart=@sbindir@/firewalld --nofork --nopid $FIREWALLD_ARGS
+ ExecStartPost=@bindir@/firewall-cmd --state
+ ExecReload=/bin/kill -HUP $MAINPID
+-# supress to log debug and error output also to /var/log/messages
+ StandardOutput=null
+ StandardError=null
+ Type=dbus
+-- 
+2.48.1
+

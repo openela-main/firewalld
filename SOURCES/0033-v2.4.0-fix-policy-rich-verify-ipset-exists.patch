@@ -1,0 +1,42 @@
+From b3c8cbff1bd9867150f804a8f7f67098de515d6b Mon Sep 17 00:00:00 2001
+From: Eric Garver <eric@garver.life>
+Date: Tue, 3 Jun 2025 16:36:10 -0400
+Subject: [PATCH 33/34] v2.4.0: fix(policy): rich: verify ipset exists
+
+Fixes: RHEL-67103
+Fixes: RHEL-67331
+(cherry picked from commit bd9b7fe87f337aff29142034282e7156cb678b41)
+---
+ src/firewall/core/io/policy.py | 16 ++++++++++++++++
+ 1 file changed, 16 insertions(+)
+
+diff --git a/src/firewall/core/io/policy.py b/src/firewall/core/io/policy.py
+index f9a1114d7969..de636631d28c 100644
+--- a/src/firewall/core/io/policy.py
++++ b/src/firewall/core/io/policy.py
+@@ -479,6 +479,22 @@ def common_check_config(obj, config, item, all_config, all_io_objects):
+                             obj_type, obj.name, obj_rich.element.name
+                         ),
+                     )
++            elif obj_rich.source and obj_rich.source.ipset:
++                if obj_rich.source.ipset not in all_io_objects["ipsets"]:
++                    raise FirewallError(
++                        errors.INVALID_IPSET,
++                        "{} '{}': '{}' not among existing ipsets".format(
++                            obj_type, obj.name, obj_rich.source.ipset
++                        ),
++                    )
++            elif obj_rich.destination and obj_rich.destination.ipset:
++                if obj_rich.destination.ipset not in all_io_objects["ipsets"]:
++                    raise FirewallError(
++                        errors.INVALID_IPSET,
++                        "{} '{}': '{}' not among existing ipsets".format(
++                            obj_type, obj.name, obj_rich.destination.ipset
++                        ),
++                    )
+ 
+ def common_writer(obj, handler):
+     # short
+-- 
+2.47.1
+
