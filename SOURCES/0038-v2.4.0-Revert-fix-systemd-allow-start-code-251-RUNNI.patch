@@ -1,0 +1,29 @@
+From bbfef80c94f368130e4440d1624d2a2bc1daf28d Mon Sep 17 00:00:00 2001
+From: Eric Garver <eric@garver.life>
+Date: Tue, 14 Oct 2025 16:05:41 -0400
+Subject: [PATCH 38/48] v2.4.0: Revert "fix(systemd): allow start code 251
+ (RUNNING_BUT_FAILED)"
+
+This reverts commit d52815e198f05378a3f34633adfedd29165cc64e.
+
+(cherry picked from commit d2af4c8de086b658b0f1a24be9d3bf55b514b3c3)
+---
+ config/firewalld.service.in | 2 --
+ 1 file changed, 2 deletions(-)
+
+diff --git a/config/firewalld.service.in b/config/firewalld.service.in
+index bd8690fd87a6..cd7f772b8581 100644
+--- a/config/firewalld.service.in
++++ b/config/firewalld.service.in
+@@ -11,8 +11,6 @@ Documentation=man:firewalld(1)
+ EnvironmentFile=-/etc/sysconfig/firewalld
+ ExecStart=@sbindir@/firewalld --nofork --nopid $FIREWALLD_ARGS
+ ExecStartPost=@bindir@/firewall-cmd --state
+-# don't fail ExecStartPost on RUNNING_BUT_FAILED
+-SuccessExitStatus=251
+ ExecReload=/bin/kill -HUP $MAINPID
+ StandardOutput=null
+ StandardError=null
+-- 
+2.47.3
+

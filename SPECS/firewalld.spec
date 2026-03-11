@@ -1,7 +1,7 @@
 Summary: A firewall daemon with D-Bus interface providing a dynamic firewall
 Name: firewalld
 Version: 1.3.4
-Release: 15%{?dist}
+Release: 18%{?dist}
 URL:     http://www.firewalld.org
 License: GPLv2+
 Source0: https://github.com/firewalld/firewalld/releases/download/v%{version}/firewalld-%{version}.tar.bz2
@@ -39,6 +39,20 @@ Patch31: 0031-v2.4.0-fix-fw-start-remove-ipset-probe.patch
 Patch32: 0032-v2.4.0-fix-systemd-allow-start-code-251-RUNNING_BUT_FAILED.patch
 Patch33: 0033-v2.4.0-fix-policy-rich-verify-ipset-exists.patch
 Patch34: 0034-v2.4.0-test-rich-rule-reference-invalid-ipset.patch
+Patch35: 0035-v2.2.0-feat-add-iperf-2-3-services.patch
+Patch36: 0036-v2.4.0-test-functions-add-macro-WAIT_UNTIL.patch
+Patch37: 0037-v2.4.0-fix-server-load-firewall-rules-before-claimin.patch
+Patch38: 0038-v2.4.0-Revert-fix-systemd-allow-start-code-251-RUNNI.patch
+Patch39: 0039-v2.4.0-Revert-fix-systemd-verify-firewalld-is-respon.patch
+Patch40: 0040-v2.4.0-fix-nftables-ipset-add-entries-from-GLib-loop.patch
+Patch41: 0041-v2.4.0-test-ipset-scale-verify-all-the-entries-were-.patch
+Patch42: 0042-v2.4.0-fix-systemd-Requires-dbus.patch
+Patch43: 0043-v2.4.0-chore-icmp-add-all-icmptypes-to-ICMP_TYPES-di.patch
+Patch44: 0044-v2.4.0-chore-icmp-convert-type-code-map-to-tuple.patch
+Patch45: 0045-v2.4.0-chore-nftables-simplify-icmp-match-fragments.patch
+Patch46: 0046-v2.4.0-chore-nftables-move-_icmp_types_fragments-ins.patch
+Patch47: 0047-v2.4.0-chore-ipXtables-simplify-icmp-match-fragments.patch
+Patch48: 0048-v2.4.0-fix-policy-allow-host-ipv6-allow-MLD-packets.patch
 BuildArch: noarch
 BuildRequires: autoconf
 BuildRequires: automake
@@ -262,6 +276,17 @@ rm -rf %{buildroot}%{_datadir}/firewalld/testsuite
 %{_mandir}/man1/firewall-config*.1*
 
 %changelog
+* Tue Dec 02 2025 Eric Garver <egarver@redhat.com> - 1.3.4-18
+- fix(policy): allow-host-ipv6: allow MLD packets
+
+* Tue Dec 02 2025 Eric Garver <egarver@redhat.com> - 1.3.4-17
+- fix(server): load firewall rules before claiming dbus
+- fix(nftables): ipset: add entries from GLib loop when idle
+- fix(systemd): Requires dbus
+
+* Tue Dec 02 2025 Eric Garver <egarver@redhat.com> - 1.3.4-16
+- feat: add iperf{2,3} services
+
 * Tue Jun 17 2025 Eric Garver <egarver@redhat.com> - 1.3.4-15
 - fix(policy): rich: verify ipset exists
 

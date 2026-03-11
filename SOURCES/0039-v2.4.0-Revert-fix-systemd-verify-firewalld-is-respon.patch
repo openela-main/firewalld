@@ -1,0 +1,29 @@
+From 82a7c51975297fa185410ce37ae0c73b70d1924d Mon Sep 17 00:00:00 2001
+From: Eric Garver <eric@garver.life>
+Date: Tue, 14 Oct 2025 16:05:54 -0400
+Subject: [PATCH 39/48] v2.4.0: Revert "fix(systemd): verify firewalld is
+ responsive to dbus"
+
+This reverts commit 4ddfe5672e3a51e1c081b410144155553f256e91.
+
+Fixes: #1492
+(cherry picked from commit 3e61bcccdb3efc12474eb99538bd52fc4f63f4dd)
+---
+ config/firewalld.service.in | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/config/firewalld.service.in b/config/firewalld.service.in
+index cd7f772b8581..08c9f74dd924 100644
+--- a/config/firewalld.service.in
++++ b/config/firewalld.service.in
+@@ -10,7 +10,6 @@ Documentation=man:firewalld(1)
+ [Service]
+ EnvironmentFile=-/etc/sysconfig/firewalld
+ ExecStart=@sbindir@/firewalld --nofork --nopid $FIREWALLD_ARGS
+-ExecStartPost=@bindir@/firewall-cmd --state
+ ExecReload=/bin/kill -HUP $MAINPID
+ StandardOutput=null
+ StandardError=null
+-- 
+2.47.3
+

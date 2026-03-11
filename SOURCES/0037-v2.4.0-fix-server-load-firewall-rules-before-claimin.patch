@@ -1,0 +1,81 @@
+From 3a91e1c6a575572cabbc06460ad94f65234a7d98 Mon Sep 17 00:00:00 2001
+From: Eric Garver <eric@garver.life>
+Date: Tue, 14 Oct 2025 16:41:49 -0400
+Subject: [PATCH 37/48] v2.4.0: fix(server): load firewall rules before
+ claiming dbus
+
+This guarantees that the firewall is loaded and ready before the daemon
+registers with dbus.
+
+(cherry picked from commit 63d2238d055ee193f18acb51f6362b64d11e0886)
+---
+ src/firewall/server/firewalld.py | 15 +++++++++++----
+ src/firewall/server/server.py    | 10 +---------
+ 2 files changed, 12 insertions(+), 13 deletions(-)
+
+diff --git a/src/firewall/server/firewalld.py b/src/firewall/server/firewalld.py
+index 8b9593a22fd8..fc85d3e0c359 100644
+--- a/src/firewall/server/firewalld.py
++++ b/src/firewall/server/firewalld.py
+@@ -25,6 +25,7 @@ from gi.repository import GLib
+ import copy
+ import dbus
+ import dbus.service
++import dbus.mainloop.glib
+ 
+ from firewall import config
+ from firewall.core.fw import Firewall
+@@ -69,12 +70,18 @@ class FirewallD(DbusServiceObject):
+     """ Use config.dbus.PK_ACTION_CONFIG as a default """
+ 
+     @handle_exceptions
+-    def __init__(self, *args, **kwargs):
+-        super(FirewallD, self).__init__(*args, **kwargs)
++    def __init__(self):
+         self.fw = Firewall()
+-        self.busname = args[0]
+-        self.path = args[1]
+         self.start()
++
++        dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
++        bus = dbus.SystemBus()
++        name = dbus.service.BusName(config.dbus.DBUS_INTERFACE, bus=bus)
++        super(FirewallD, self).__init__(name, config.dbus.DBUS_PATH)
++
++        self.busname = name
++        self.path = config.dbus.DBUS_PATH
++
+         dbus_introspection_prepare_properties(self, config.dbus.DBUS_INTERFACE)
+         self.config = FirewallDConfig(self.fw.config, self.busname,
+                                       config.dbus.DBUS_PATH_CONFIG)
+diff --git a/src/firewall/server/server.py b/src/firewall/server/server.py
+index 2921ae9104f1..7f3404793f12 100644
+--- a/src/firewall/server/server.py
++++ b/src/firewall/server/server.py
+@@ -31,11 +31,6 @@ import signal
+ 
+ from gi.repository import GLib
+ 
+-import dbus
+-import dbus.service
+-import dbus.mainloop.glib
+-
+-from firewall import config
+ from firewall.core.logger import log
+ from firewall.server.firewalld import FirewallD
+ 
+@@ -83,10 +78,7 @@ def run_server(debug_gc=False):
+             GLib.timeout_add_seconds(gc_timeout, gc_collect)
+ 
+     try:
+-        dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
+-        bus = dbus.SystemBus()
+-        name = dbus.service.BusName(config.dbus.DBUS_INTERFACE, bus=bus)
+-        service = FirewallD(name, config.dbus.DBUS_PATH)
++        service = FirewallD()
+ 
+         mainloop = GLib.MainLoop()
+         if debug_gc:
+-- 
+2.47.3
+

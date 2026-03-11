@@ -1,0 +1,71 @@
+From 0829f9ec9d171894bda6695a87c15aba49f3e6a2 Mon Sep 17 00:00:00 2001
+From: cyqsimon <28627918+cyqsimon@users.noreply.github.com>
+Date: Tue, 30 Jan 2024 17:08:30 +0800
+Subject: [PATCH 35/48] v2.2.0: feat: add iperf{2,3} services
+
+(cherry picked from commit a21b401f6d8dd6eb65adba1878a29d63086b15e7)
+---
+ config/Makefile.am         | 2 ++
+ config/services/iperf2.xml | 7 +++++++
+ config/services/iperf3.xml | 8 ++++++++
+ po/POTFILES.in             | 2 ++
+ 4 files changed, 19 insertions(+)
+ create mode 100644 config/services/iperf2.xml
+ create mode 100644 config/services/iperf3.xml
+
+diff --git a/config/Makefile.am b/config/Makefile.am
+index 711f05afb799..a7a6dc039594 100644
+--- a/config/Makefile.am
++++ b/config/Makefile.am
+@@ -188,6 +188,8 @@ CONFIG_FILES = \
+ 	services/ident.xml \
+ 	services/imaps.xml \
+ 	services/imap.xml \
++	services/iperf2.xml \
++	services/iperf3.xml \
+ 	services/ipfs.xml \
+ 	services/ipp-client.xml \
+ 	services/ipp.xml \
+diff --git a/config/services/iperf2.xml b/config/services/iperf2.xml
+new file mode 100644
+index 000000000000..4475c4e58212
+--- /dev/null
++++ b/config/services/iperf2.xml
+@@ -0,0 +1,7 @@
++<?xml version="1.0" encoding="utf-8"?>
++<service>
++  <short>iperf2</short>
++  <description>iperf2 is a TCP and UDP network bandwidth measurement tool. Enable this option if you want to run an iperf2 server on its default port.</description>
++  <port protocol="tcp" port="5001"/>
++  <port protocol="udp" port="5001"/>
++</service>
+diff --git a/config/services/iperf3.xml b/config/services/iperf3.xml
+new file mode 100644
+index 000000000000..4a481b0ecdfb
+--- /dev/null
++++ b/config/services/iperf3.xml
+@@ -0,0 +1,8 @@
++<?xml version="1.0" encoding="utf-8"?>
++<service>
++  <short>iperf3</short>
++  <description>iperf3 is a TCP, UDP, and SCTP network bandwidth measurement tool. Enable this option if you want to run an iperf3 server on its default port.</description>
++  <port protocol="tcp" port="5201"/>
++  <port protocol="udp" port="5201"/>
++  <port protocol="sctp" port="5201"/>
++</service>
+diff --git a/po/POTFILES.in b/po/POTFILES.in
+index a03ff0ce1df3..bdd0d3fc939e 100644
+--- a/po/POTFILES.in
++++ b/po/POTFILES.in
+@@ -120,6 +120,8 @@ config/services/http.xml
+ config/services/ident.xml
+ config/services/imaps.xml
+ config/services/imap.xml
++config/services/iperf2.xml
++config/services/iperf3.xml
+ config/services/ipfs.xml
+ config/services/ipp-client.xml
+ config/services/ipp.xml
+-- 
+2.47.3
+

@@ -1,0 +1,36 @@
+From 1f72a1c3bdf0dd727d76f205b87223dd29ef0c7c Mon Sep 17 00:00:00 2001
+From: Eric Garver <eric@garver.life>
+Date: Mon, 6 Oct 2025 16:32:59 -0400
+Subject: [PATCH 36/48] v2.4.0: test(functions): add macro WAIT_UNTIL
+
+(cherry picked from commit 50890c62b00db91f15ba5802055afc293a3fe77a)
+---
+ src/tests/functions.at | 15 +++++++++++++++
+ 1 file changed, 15 insertions(+)
+
+diff --git a/src/tests/functions.at b/src/tests/functions.at
+index 8b07908c667c..df3fff6ad4b9 100644
+--- a/src/tests/functions.at
++++ b/src/tests/functions.at
+@@ -763,3 +763,18 @@ m4_define([CHECK_NFTABLES_FIB_IN_FORWARD], [
+         NS_CHECK([nft delete table inet firewalld_check])
+     ])
+ ])
++
++dnl $1 = command to run until zero exit code
++m4_define([WAIT_UNTIL], [
++    _fail=1
++    _timeout=120
++    for I in $(seq ${_timeout}); do
++        { $1 ; } && { _fail=0; break; }
++        sleep 1
++    done
++    if test ${_fail} -gt 0; then
++        printf "FAIL: Command failed succeed in ${_timeout} seconds:\n"
++        printf "  $1\n"
++        AT_FAIL_IF([:])
++    fi
++])
+-- 
+2.47.3
+

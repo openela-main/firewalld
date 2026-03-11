@@ -1,0 +1,28 @@
+From f7c7f94908834824bc777334c5b61e7af4d629b5 Mon Sep 17 00:00:00 2001
+From: Eric Garver <eric@garver.life>
+Date: Mon, 13 Oct 2025 15:44:17 -0400
+Subject: [PATCH 42/48] v2.4.0: fix(systemd): Requires dbus
+
+Use Requires so when dbus is restarted firewalld is also restarted.
+
+Fixes: RHEL-94927
+(cherry picked from commit b9595ea06e6159735300bb4668a3e7e84966219c)
+---
+ config/firewalld.service.in | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/config/firewalld.service.in b/config/firewalld.service.in
+index 08c9f74dd924..7ace390c29d6 100644
+--- a/config/firewalld.service.in
++++ b/config/firewalld.service.in
+@@ -2,6 +2,7 @@
+ Description=firewalld - dynamic firewall daemon
+ Before=network-pre.target
+ Wants=network-pre.target
++Requires=dbus.service
+ After=dbus.service
+ After=polkit.service
+ Conflicts=iptables.service ip6tables.service ebtables.service ipset.service
+-- 
+2.47.3
+
