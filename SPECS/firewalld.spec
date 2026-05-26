@@ -1,7 +1,7 @@
 Summary: A firewall daemon with D-Bus interface providing a dynamic firewall
 Name: firewalld
 Version: 0.9.11
-Release: 10%{?dist}
+Release: 11%{?dist}
 URL:     http://www.firewalld.org
 License: GPLv2+
 Source0: https://github.com/firewalld/firewalld/releases/download/v%{version}/firewalld-%{version}.tar.gz
@@ -36,6 +36,12 @@ Patch28: 0028-v2.0.0-chore-direct-add-has_runtime_configuration.patch
 Patch29: 0029-v2.0.0-feat-direct-avoid-iptables-flush-if-using-nft.patch
 Patch30: 0030-v2.0.0-test-direct-avoid-iptables-flush-if-using-nft.patch
 Patch31: 0031-v2.2.0-fix-service-update-highest-port-number-for-ce.patch
+Patch32: 0032-v2.4.0-chore-icmp-add-all-icmptypes-to-ICMP_TYPES-di.patch
+Patch33: 0033-v2.4.0-chore-icmp-convert-type-code-map-to-tuple.patch
+Patch34: 0034-v2.4.0-chore-nftables-simplify-icmp-match-fragments.patch
+Patch35: 0035-v2.4.0-chore-nftables-move-_icmp_types_fragments-ins.patch
+Patch36: 0036-v2.4.0-chore-ipXtables-simplify-icmp-match-fragments.patch
+Patch37: 0037-v2.4.0-fix-policy-allow-host-ipv6-allow-MLD-packets.patch
 
 BuildArch: noarch
 BuildRequires: autoconf
@@ -237,6 +243,9 @@ desktop-file-install --delete-original \
 %{_mandir}/man1/firewall-config*.1*
 
 %changelog
+* Sat Mar 21 2026 Eric Garver <egarver@redhat.com> - 0.9.11-11
+- fix(policy): allow-host-ipv6: allow MLD packets
+
 * Tue Feb 04 2025 Eric Garver <egarver@redhat.com> - 0.9.11-10
 - fix(service): update highest port number for ceph
 

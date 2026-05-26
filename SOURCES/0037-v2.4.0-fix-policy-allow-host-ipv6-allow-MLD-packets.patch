@@ -1,0 +1,165 @@
+From 242e9d83840115260452b2ac48638f8f40d8ed3d Mon Sep 17 00:00:00 2001
+From: Eric Garver <eric@garver.life>
+Date: Mon, 27 Oct 2025 16:37:35 -0400
+Subject: [PATCH 37/37] v2.4.0: fix(policy): allow-host-ipv6: allow MLD packets
+
+RFC 4890 Section 4.4.1 makes it very clear that MLD packets must be
+allowed by default.
+
+Fixes: RHEL-54411
+Fixes: RHEL-123703
+(cherry picked from commit 3c42d02b770391686e6f7b202556ea4eee0722f5)
+---
+ config/policies/allow-host-ipv6.xml           | 16 +++++++++++++
+ src/tests/dbus/policy_permanent_functional.at |  4 ++--
+ src/tests/dbus/policy_runtime_functional.at   |  2 +-
+ src/tests/features/policy.at                  | 24 +++++++++++++++++++
+ src/tests/regression/rhbz2222044.at           |  2 +-
+ 5 files changed, 44 insertions(+), 4 deletions(-)
+
+diff --git a/config/policies/allow-host-ipv6.xml b/config/policies/allow-host-ipv6.xml
+index 0de7629c3809..33b5d13206a6 100644
+--- a/config/policies/allow-host-ipv6.xml
++++ b/config/policies/allow-host-ipv6.xml
+@@ -20,4 +20,20 @@
+     <icmp-type name="redirect" />
+     <accept />
+   </rule>
++  <rule family="ipv6">
++    <icmp-type name="mld-listener-done" />
++    <accept />
++  </rule>
++  <rule family="ipv6">
++    <icmp-type name="mld-listener-query" />
++    <accept />
++  </rule>
++  <rule family="ipv6">
++    <icmp-type name="mld-listener-report" />
++    <accept />
++  </rule>
++  <rule family="ipv6">
++    <icmp-type name="mld2-listener-report" />
++    <accept />
++  </rule>
+ </policy>
+diff --git a/src/tests/dbus/policy_permanent_functional.at b/src/tests/dbus/policy_permanent_functional.at
+index a5e1af90cc1c..44b8ebeea18e 100644
+--- a/src/tests/dbus/policy_permanent_functional.at
++++ b/src/tests/dbus/policy_permanent_functional.at
+@@ -155,7 +155,7 @@ DBUS_CHECK([config/policy/${DBUS_BUILTIN_POLICY_OBJ}], [config.policy.getSetting
+     'ingress_zones': m4_escape([<['ANY']>])
+     'masquerade': <false>
+     'priority': <-15000>
+-    'rich_rules': m4_escape([<['rule family="ipv6" icmp-type name="neighbour-advertisement" accept', 'rule family="ipv6" icmp-type name="neighbour-solicitation" accept', 'rule family="ipv6" icmp-type name="router-advertisement" accept', 'rule family="ipv6" icmp-type name="redirect" accept']>])
++    'rich_rules': m4_escape([<['rule family="ipv6" icmp-type name="neighbour-advertisement" accept', 'rule family="ipv6" icmp-type name="neighbour-solicitation" accept', 'rule family="ipv6" icmp-type name="router-advertisement" accept', 'rule family="ipv6" icmp-type name="redirect" accept', 'rule family="ipv6" icmp-type name="mld-listener-done" accept', 'rule family="ipv6" icmp-type name="mld-listener-query" accept', 'rule family="ipv6" icmp-type name="mld-listener-report" accept', 'rule family="ipv6" icmp-type name="mld2-listener-report" accept']>])
+     'short': <'Allow host IPv6'>
+     'target': <'DROP'>
+     'version': <'1.2'>
+@@ -168,7 +168,7 @@ DBUS_CHECK([config/policy/${DBUS_BUILTIN_POLICY_OBJ}], [config.policy.getSetting
+     'ingress_zones': m4_escape([<['ANY']>])
+     'masquerade': <false>
+     'priority': <-15000>
+-    'rich_rules': m4_escape([<['rule family="ipv6" icmp-type name="neighbour-advertisement" accept', 'rule family="ipv6" icmp-type name="neighbour-solicitation" accept', 'rule family="ipv6" icmp-type name="router-advertisement" accept', 'rule family="ipv6" icmp-type name="redirect" accept']>])
++    'rich_rules': m4_escape([<['rule family="ipv6" icmp-type name="neighbour-advertisement" accept', 'rule family="ipv6" icmp-type name="neighbour-solicitation" accept', 'rule family="ipv6" icmp-type name="router-advertisement" accept', 'rule family="ipv6" icmp-type name="redirect" accept', 'rule family="ipv6" icmp-type name="mld-listener-done" accept', 'rule family="ipv6" icmp-type name="mld-listener-query" accept', 'rule family="ipv6" icmp-type name="mld-listener-report" accept', 'rule family="ipv6" icmp-type name="mld2-listener-report" accept']>])
+     'short': <'Allow host IPv6'>
+     'target': <'CONTINUE'>
+ ])
+diff --git a/src/tests/dbus/policy_runtime_functional.at b/src/tests/dbus/policy_runtime_functional.at
+index ab9a43dda8f3..08cb3b1051ff 100644
+--- a/src/tests/dbus/policy_runtime_functional.at
++++ b/src/tests/dbus/policy_runtime_functional.at
+@@ -11,7 +11,7 @@ DBUS_CHECK([], [policy.getPolicySettings], ["allow-host-ipv6"], 0, [dnl
+     'ingress_zones': m4_escape([<['ANY']>])
+     'masquerade': <false>
+     'priority': <-15000>
+-    'rich_rules': m4_escape([<['rule family="ipv6" icmp-type name="neighbour-advertisement" accept', 'rule family="ipv6" icmp-type name="neighbour-solicitation" accept', 'rule family="ipv6" icmp-type name="router-advertisement" accept', 'rule family="ipv6" icmp-type name="redirect" accept']>])
++    'rich_rules': m4_escape([<['rule family="ipv6" icmp-type name="neighbour-advertisement" accept', 'rule family="ipv6" icmp-type name="neighbour-solicitation" accept', 'rule family="ipv6" icmp-type name="router-advertisement" accept', 'rule family="ipv6" icmp-type name="redirect" accept', 'rule family="ipv6" icmp-type name="mld-listener-done" accept', 'rule family="ipv6" icmp-type name="mld-listener-query" accept', 'rule family="ipv6" icmp-type name="mld-listener-report" accept', 'rule family="ipv6" icmp-type name="mld2-listener-report" accept']>])
+     'short': <'Allow host IPv6'>
+     'target': <'CONTINUE'>
+ ])
+diff --git a/src/tests/features/policy.at b/src/tests/features/policy.at
+index 9811330aee07..1db150d3c430 100644
+--- a/src/tests/features/policy.at
++++ b/src/tests/features/policy.at
+@@ -121,6 +121,10 @@ allow-host-ipv6 (active)
+        rule family="ipv6" icmp-type name="neighbour-solicitation" accept
+        rule family="ipv6" icmp-type name="router-advertisement" accept
+        rule family="ipv6" icmp-type name="redirect" accept
++       rule family="ipv6" icmp-type name="mld-listener-done" accept
++       rule family="ipv6" icmp-type name="mld-listener-query" accept
++       rule family="ipv6" icmp-type name="mld-listener-report" accept
++       rule family="ipv6" icmp-type name="mld2-listener-report" accept
+ ])])
+ FWD_CHECK([--permanent --info-policy allow-host-ipv6 | TRIM_WHITESPACE], 0, [m4_strip([dnl
+ allow-host-ipv6 (active)
+@@ -140,6 +144,10 @@ allow-host-ipv6 (active)
+        rule family="ipv6" icmp-type name="neighbour-solicitation" accept
+        rule family="ipv6" icmp-type name="router-advertisement" accept
+        rule family="ipv6" icmp-type name="redirect" accept
++       rule family="ipv6" icmp-type name="mld-listener-done" accept
++       rule family="ipv6" icmp-type name="mld-listener-query" accept
++       rule family="ipv6" icmp-type name="mld-listener-report" accept
++       rule family="ipv6" icmp-type name="mld2-listener-report" accept
+ ])])
+ 
+ FWD_CHECK([--list-all-policies | TRIM_WHITESPACE], 0, [m4_strip([dnl
+@@ -160,6 +168,10 @@ allow-host-ipv6 (active)
+        rule family="ipv6" icmp-type name="neighbour-solicitation" accept
+        rule family="ipv6" icmp-type name="router-advertisement" accept
+        rule family="ipv6" icmp-type name="redirect" accept
++       rule family="ipv6" icmp-type name="mld-listener-done" accept
++       rule family="ipv6" icmp-type name="mld-listener-query" accept
++       rule family="ipv6" icmp-type name="mld-listener-report" accept
++       rule family="ipv6" icmp-type name="mld2-listener-report" accept
+ ])])
+ FWD_CHECK([--permanent --list-all-policies | TRIM_WHITESPACE], 0, [m4_strip([dnl
+ allow-host-ipv6 (active)
+@@ -179,6 +191,10 @@ allow-host-ipv6 (active)
+        rule family="ipv6" icmp-type name="neighbour-solicitation" accept
+        rule family="ipv6" icmp-type name="router-advertisement" accept
+        rule family="ipv6" icmp-type name="redirect" accept
++       rule family="ipv6" icmp-type name="mld-listener-done" accept
++       rule family="ipv6" icmp-type name="mld-listener-query" accept
++       rule family="ipv6" icmp-type name="mld-listener-report" accept
++       rule family="ipv6" icmp-type name="mld2-listener-report" accept
+ ])])
+ 
+ FWD_CHECK([--policy allow-host-ipv6 --list-all | TRIM_WHITESPACE], 0, [m4_strip([dnl
+@@ -199,6 +215,10 @@ allow-host-ipv6 (active)
+        rule family="ipv6" icmp-type name="neighbour-solicitation" accept
+        rule family="ipv6" icmp-type name="router-advertisement" accept
+        rule family="ipv6" icmp-type name="redirect" accept
++       rule family="ipv6" icmp-type name="mld-listener-done" accept
++       rule family="ipv6" icmp-type name="mld-listener-query" accept
++       rule family="ipv6" icmp-type name="mld-listener-report" accept
++       rule family="ipv6" icmp-type name="mld2-listener-report" accept
+ ])])
+ FWD_CHECK([--permanent --policy allow-host-ipv6 --list-all | TRIM_WHITESPACE], 0, [m4_strip([dnl
+ allow-host-ipv6 (active)
+@@ -218,6 +238,10 @@ allow-host-ipv6 (active)
+        rule family="ipv6" icmp-type name="neighbour-solicitation" accept
+        rule family="ipv6" icmp-type name="router-advertisement" accept
+        rule family="ipv6" icmp-type name="redirect" accept
++       rule family="ipv6" icmp-type name="mld-listener-done" accept
++       rule family="ipv6" icmp-type name="mld-listener-query" accept
++       rule family="ipv6" icmp-type name="mld-listener-report" accept
++       rule family="ipv6" icmp-type name="mld2-listener-report" accept
+ ])])
+ 
+ FWD_END_TEST
+diff --git a/src/tests/regression/rhbz2222044.at b/src/tests/regression/rhbz2222044.at
+index 9f3b1615b2f9..2e579c6315b0 100644
+--- a/src/tests/regression/rhbz2222044.at
++++ b/src/tests/regression/rhbz2222044.at
+@@ -6,7 +6,7 @@ dnl rules have not changed so rule count should not change
+ m4_define([check_rule_count], [
+ m4_if(nftables, FIREWALL_BACKEND, [
+ NS_CHECK([nft list table inet firewalld | wc -l], 0, [dnl
+-237
++241
+ ])
+ NS_CHECK([nft list table ip firewalld | wc -l], 0, [dnl
+ 105
+-- 
+2.52.0
+
