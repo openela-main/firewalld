@@ -1,0 +1,51 @@
+From dde93f3310f79a1f739c8e7400831bf4e1b78df6 Mon Sep 17 00:00:00 2001
+From: Eric Garver <eric@garver.life>
+Date: Mon, 1 Dec 2025 16:34:17 -0500
+Subject: [PATCH 61/70] v2.5.0: chore(fw_zone): add utility functions to
+ support timeouts
+
+(cherry picked from commit 9f3c28e065543935a6f3c7c62e336ec0a866b1c6)
+---
+ src/firewall/core/fw_zone.py | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+
+diff --git a/src/firewall/core/fw_zone.py b/src/firewall/core/fw_zone.py
+index 6c659047b97d..f55be13f8fd3 100644
+--- a/src/firewall/core/fw_zone.py
++++ b/src/firewall/core/fw_zone.py
+@@ -49,6 +49,7 @@ class FirewallZone(object):
+         self._fw = fw
+         self._zones = { }
+         self._zone_policies = { }
++        self._timeouts = {}
+ 
+     def __repr__(self):
+         return '%s(%r)' % (self.__class__, self._zones)
+@@ -56,6 +57,8 @@ class FirewallZone(object):
+     def cleanup(self):
+         self._zones.clear()
+         self._zone_policies.clear()
++        for _id in self._timeouts:
++            self.removeTimeout(_id)
+ 
+     def new_transaction(self):
+         t = FirewallTransaction(self._fw)
+@@ -400,6 +403,15 @@ class FirewallZone(object):
+                 else:
+                     setting_to_fn[key][0](zone, timeout=0, sender=sender)
+ 
++    def addTimeout(self, tag, _id):
++        if _id not in self._timeouts:
++            self._timeouts[_id] = tag
++
++    def removeTimeout(self, _id):
++        if _id in self._timeouts:
++            GLib.source_remove(self._timeouts[_id])
++            del self._timeouts[_id]
++
+     # INTERFACES
+ 
+     def check_interface(self, interface):
+-- 
+2.52.0
+

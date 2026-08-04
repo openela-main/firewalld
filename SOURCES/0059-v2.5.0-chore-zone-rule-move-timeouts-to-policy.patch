@@ -1,0 +1,76 @@
+From 0037599863132394bddfe2e609e4c8c3786627a1 Mon Sep 17 00:00:00 2001
+From: Eric Garver <eric@garver.life>
+Date: Mon, 1 Dec 2025 16:29:05 -0500
+Subject: [PATCH 59/70] v2.5.0: chore(zone): rule: move timeouts to policy
+
+(cherry picked from commit cd928486a31b8fbe98a25f1a682cac2c5f9226d3)
+---
+ src/firewall/core/fw_policy.py   |  6 ++++++
+ src/firewall/server/firewalld.py | 13 +------------
+ 2 files changed, 7 insertions(+), 12 deletions(-)
+
+diff --git a/src/firewall/core/fw_policy.py b/src/firewall/core/fw_policy.py
+index b477f62f640c..6203824166c3 100644
+--- a/src/firewall/core/fw_policy.py
++++ b/src/firewall/core/fw_policy.py
+@@ -478,6 +478,10 @@ class FirewallPolicy(object):
+         if _obj.applied:
+             self.__rule(True, _policy, rule, transaction)
+ 
++        if timeout > 0:
++            tag = GLib.timeout_add_seconds(timeout, self.remove_rule, _policy, rule)
++            self.addTimeout(tag, ("rule", _policy, rule))
++
+         self.__register_rule(_obj, rule_id, timeout, sender)
+         transaction.add_fail(self.__unregister_rule, _obj, rule_id)
+ 
+@@ -509,6 +513,8 @@ class FirewallPolicy(object):
+         if _obj.applied:
+             self.__rule(False, _policy, rule, transaction)
+ 
++        self.removeTimeout(("rule", _policy, rule))
++
+         transaction.add_post(self.__unregister_rule, _obj, rule_id)
+ 
+         if use_transaction is None:
+diff --git a/src/firewall/server/firewalld.py b/src/firewall/server/firewalld.py
+index ab3078b2e8b9..48429bc8061a 100644
+--- a/src/firewall/server/firewalld.py
++++ b/src/firewall/server/firewalld.py
+@@ -1474,14 +1474,6 @@ class FirewallD(DbusServiceObject):
+ 
+     # RICH RULES
+ 
+-    @dbus_handle_exceptions
+-    def disableTimedRichRule(self, zone, rule):
+-        log.debug1("zone.disableTimedRichRule('%s', '%s')" % (zone, rule))
+-        del self._timeouts[zone][rule]
+-        obj = Rich_Rule(rule_str=rule)
+-        self.fw.zone.remove_rule(zone, obj)
+-        self.RichRuleRemoved(zone, rule)
+-
+     @dbus_polkit_require_auth(config.dbus.PK_ACTION_CONFIG)
+     @dbus_service_method(config.dbus.DBUS_INTERFACE_ZONE, in_signature='ssi',
+                          out_signature='s')
+@@ -1495,9 +1487,7 @@ class FirewallD(DbusServiceObject):
+         _zone = self.fw.zone.add_rule(zone, obj, timeout)
+ 
+         if timeout > 0:
+-            tag = GLib.timeout_add_seconds(timeout, self.disableTimedRichRule,
+-                                           _zone, rule)
+-            self.addTimeout(_zone, rule, tag)
++            GLib.timeout_add_seconds(timeout, self.RichRuleRemoved, _zone, rule)
+ 
+         self.RichRuleAdded(_zone, rule, timeout)
+         return _zone
+@@ -1512,7 +1502,6 @@ class FirewallD(DbusServiceObject):
+         log.debug1("zone.removeRichRule('%s', '%s')" % (zone, rule))
+         obj = Rich_Rule(rule_str=rule)
+         _zone = self.fw.zone.remove_rule(zone, obj)
+-        self.removeTimeout(_zone, rule)
+         self.RichRuleRemoved(_zone, rule)
+         return _zone
+ 
+-- 
+2.52.0
+

@@ -1,0 +1,75 @@
+From b6cbb249a6342749c52c24978ff1fb6411bef729 Mon Sep 17 00:00:00 2001
+From: Eric Garver <eric@garver.life>
+Date: Mon, 1 Dec 2025 14:35:02 -0500
+Subject: [PATCH 57/70] v2.5.0: chore(zone): masquerade: move timeouts to
+ policy
+
+(cherry picked from commit ef995448e43cdd307b6ff74f081e7db100add6c7)
+---
+ src/firewall/core/fw_policy.py   |  6 ++++++
+ src/firewall/server/firewalld.py | 11 +----------
+ 2 files changed, 7 insertions(+), 10 deletions(-)
+
+diff --git a/src/firewall/core/fw_policy.py b/src/firewall/core/fw_policy.py
+index 5382c9c51ef5..ebb052e9caa2 100644
+--- a/src/firewall/core/fw_policy.py
++++ b/src/firewall/core/fw_policy.py
+@@ -979,6 +979,10 @@ class FirewallPolicy(object):
+         if _obj.applied:
+             self._masquerade(True, _policy, transaction)
+ 
++        if timeout > 0:
++            tag = GLib.timeout_add_seconds(timeout, self.remove_masquerade, _policy)
++            self.addTimeout(tag, ("masquerade", _policy))
++
+         self.__register_masquerade(_obj, timeout, sender)
+         transaction.add_fail(self.__unregister_masquerade, _obj)
+ 
+@@ -1008,6 +1012,8 @@ class FirewallPolicy(object):
+         if _obj.applied:
+             self._masquerade(False, _policy, transaction)
+ 
++        self.removeTimeout(("masquerade", _policy))
++
+         transaction.add_post(self.__unregister_masquerade, _obj)
+ 
+         if use_transaction is None:
+diff --git a/src/firewall/server/firewalld.py b/src/firewall/server/firewalld.py
+index 913c9a8e173a..b7ced6143734 100644
+--- a/src/firewall/server/firewalld.py
++++ b/src/firewall/server/firewalld.py
+@@ -1869,12 +1869,6 @@ class FirewallD(DbusServiceObject):
+ 
+     # MASQUERADE
+ 
+-    @dbus_handle_exceptions
+-    def disableTimedMasquerade(self, zone):
+-        del self._timeouts[zone]["masquerade"]
+-        self.fw.zone.remove_masquerade(zone)
+-        self.MasqueradeRemoved(zone)
+-
+     @dbus_polkit_require_auth(config.dbus.PK_ACTION_CONFIG)
+     @dbus_service_method(config.dbus.DBUS_INTERFACE_ZONE, in_signature='si',
+                          out_signature='s')
+@@ -1888,9 +1882,7 @@ class FirewallD(DbusServiceObject):
+         _zone = self.fw.zone.add_masquerade(zone, timeout, sender)
+ 
+         if timeout > 0:
+-            tag = GLib.timeout_add_seconds(timeout, self.disableTimedMasquerade,
+-                                           _zone)
+-            self.addTimeout(_zone, "masquerade", tag)
++            GLib.timeout_add_seconds(timeout, self.MasqueradeRemoved, _zone)
+ 
+         self.MasqueradeAdded(_zone, timeout)
+         return _zone
+@@ -1906,7 +1898,6 @@ class FirewallD(DbusServiceObject):
+         self.accessCheck(sender)
+         _zone = self.fw.zone.remove_masquerade(zone)
+ 
+-        self.removeTimeout(_zone, "masquerade")
+         self.MasqueradeRemoved(_zone)
+         return _zone
+ 
+-- 
+2.52.0
+

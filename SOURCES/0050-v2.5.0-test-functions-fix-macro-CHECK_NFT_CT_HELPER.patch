@@ -1,0 +1,30 @@
+From 697ab1154b57fc875aa87d9407a3d123b324731d Mon Sep 17 00:00:00 2001
+From: Eric Garver <eric@garver.life>
+Date: Tue, 6 Jan 2026 13:13:44 -0500
+Subject: [PATCH 50/70] v2.5.0: test(functions): fix macro
+ CHECK_NFT_CT_HELPER()
+
+It never worked!
+
+Fixes: 32c2497f6ec0 ("test: add macro CHECK_NFT_CT_HELPER()")
+(cherry picked from commit eca5890a1ac596dd3ff08f6446de0b68427dffc9)
+---
+ src/tests/functions.at | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/tests/functions.at b/src/tests/functions.at
+index df3fff6ad4b9..fa0c961fb574 100644
+--- a/src/tests/functions.at
++++ b/src/tests/functions.at
+@@ -647,7 +647,7 @@ m4_define([CHECK_LOG_AUDIT], [
+ m4_define([CHECK_NFT_CT_HELPER], [
+     m4_if(nftables, FIREWALL_BACKEND, [
+         NS_CHECK([nft add table inet firewalld_check_ct_helper])
+-        AT_SKIP_IF([! NS_CMD([nft add ct helper inet firewalld helper-ftp-tcp { type \"ftp\" protocol tcp \; } >/dev/null 2>&1])])
++        AT_SKIP_IF([! NS_CMD([nft add ct helper inet firewalld_check_ct_helper helper-ftp-tcp { type \"ftp\" protocol tcp \; } >/dev/null 2>&1])])
+         NS_CHECK([nft delete table inet firewalld_check_ct_helper])
+     ])
+ ])
+-- 
+2.52.0
+

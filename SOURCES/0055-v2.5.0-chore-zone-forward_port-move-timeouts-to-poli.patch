@@ -1,0 +1,91 @@
+From c53903f8b42673451a22992a4b1199ad5e554533 Mon Sep 17 00:00:00 2001
+From: Eric Garver <eric@garver.life>
+Date: Mon, 1 Dec 2025 15:03:21 -0500
+Subject: [PATCH 55/70] v2.5.0: chore(zone): forward_port: move timeouts to
+ policy
+
+(cherry picked from commit b7f543d71b25218eb6cdabf78fdb678507201400)
+---
+ src/firewall/core/fw_policy.py   | 18 ++++++++++++++++++
+ src/firewall/server/firewalld.py | 15 +++------------
+ 2 files changed, 21 insertions(+), 12 deletions(-)
+
+diff --git a/src/firewall/core/fw_policy.py b/src/firewall/core/fw_policy.py
+index ee652d892d4a..70ca2ecf20d3 100644
+--- a/src/firewall/core/fw_policy.py
++++ b/src/firewall/core/fw_policy.py
+@@ -1068,6 +1068,20 @@ class FirewallPolicy(object):
+             self._forward_port(True, _policy, transaction, port, protocol,
+                                toport, toaddr)
+ 
++        if timeout > 0:
++            tag = GLib.timeout_add_seconds(
++                timeout,
++                self.remove_forward_port,
++                _policy,
++                port,
++                protocol,
++                toport,
++                toaddr,
++            )
++            self.addTimeout(
++                tag, ("forward_port", _policy, port, protocol, toport, toaddr)
++            )
++
+         self.__register_forward_port(_obj, forward_id, timeout, sender)
+         transaction.add_fail(self.__unregister_forward_port, _obj, forward_id)
+ 
+@@ -1101,6 +1115,10 @@ class FirewallPolicy(object):
+             self._forward_port(False, _policy, transaction, port, protocol,
+                                toport, toaddr)
+ 
++        self.removeTimeout(
++            ("forward_port", _policy, port, protocol, toport, toaddr)
++        )
++
+         transaction.add_post(self.__unregister_forward_port, _obj, forward_id)
+ 
+         if use_transaction is None:
+diff --git a/src/firewall/server/firewalld.py b/src/firewall/server/firewalld.py
+index 75fa486f0f92..66321939237f 100644
+--- a/src/firewall/server/firewalld.py
++++ b/src/firewall/server/firewalld.py
+@@ -1934,12 +1934,6 @@ class FirewallD(DbusServiceObject):
+ 
+     # FORWARD PORT
+ 
+-    @dbus_handle_exceptions
+-    def disable_forward_port(self, zone, port, protocol, toport, toaddr): # pylint: disable=R0913
+-        del self._timeouts[zone][(port, protocol, toport, toaddr)]
+-        self.fw.zone.remove_forward_port(zone, port, protocol, toport, toaddr)
+-        self.ForwardPortRemoved(zone, port, protocol, toport, toaddr)
+-
+     @dbus_polkit_require_auth(config.dbus.PK_ACTION_CONFIG)
+     @dbus_service_method(config.dbus.DBUS_INTERFACE_ZONE, in_signature='sssssi',
+                          out_signature='s')
+@@ -1960,11 +1954,9 @@ class FirewallD(DbusServiceObject):
+                                               toaddr, timeout, sender)
+ 
+         if timeout > 0:
+-            tag = GLib.timeout_add_seconds(timeout,
+-                                           self.disable_forward_port,
+-                                           _zone, port, protocol, toport,
+-                                           toaddr)
+-            self.addTimeout(_zone, (port, protocol, toport, toaddr), tag)
++            GLib.timeout_add_seconds(
++                timeout, self.ForwardPortRemoved, _zone, port, protocol, toport, toaddr
++            )
+ 
+         self.ForwardPortAdded(_zone, port, protocol, toport, toaddr, timeout)
+         return _zone
+@@ -1987,7 +1979,6 @@ class FirewallD(DbusServiceObject):
+         _zone = self.fw.zone.remove_forward_port(zone, port, protocol, toport,
+                                                  toaddr)
+ 
+-        self.removeTimeout(_zone, (port, protocol, toport, toaddr))
+         self.ForwardPortRemoved(_zone, port, protocol, toport, toaddr)
+         return _zone
+ 
+-- 
+2.52.0
+

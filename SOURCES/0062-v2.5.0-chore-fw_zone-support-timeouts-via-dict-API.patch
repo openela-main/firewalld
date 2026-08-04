@@ -1,0 +1,78 @@
+From b26be86bdad0c269254f3008421480edd186cde4 Mon Sep 17 00:00:00 2001
+From: Eric Garver <eric@garver.life>
+Date: Mon, 1 Dec 2025 14:39:47 -0500
+Subject: [PATCH 62/70] v2.5.0: chore(fw_zone): support timeouts via dict API
+
+(cherry picked from commit 24476b6820f36cc31ba0b7fc36e63acb07ba66a5)
+---
+ src/firewall/core/fw_zone.py     | 14 +++++++++++---
+ src/firewall/server/firewalld.py |  9 +++++++++
+ 2 files changed, 20 insertions(+), 3 deletions(-)
+
+diff --git a/src/firewall/core/fw_zone.py b/src/firewall/core/fw_zone.py
+index f55be13f8fd3..de01aeb30a59 100644
+--- a/src/firewall/core/fw_zone.py
++++ b/src/firewall/core/fw_zone.py
+@@ -365,6 +365,12 @@ class FirewallZone(object):
+             "forward": (self.add_forward, self.remove_forward),
+         }
+ 
++        timeout = 0
++        if "timeout" in settings:
++            timeout = settings["timeout"]
++            settings = copy.copy(settings)
++            del settings["timeout"]
++
+         # do a full config check on a temporary object before trying to make
+         # the runtime changes
+         old_obj = self.get_zone(zone)
+@@ -393,15 +399,17 @@ class FirewallZone(object):
+                         setting_to_fn[key][0](zone, args, sender=sender)
+                     else:
+                         if isinstance(args, tuple):
+-                            setting_to_fn[key][0](zone, *args, timeout=0, sender=sender)
++                            setting_to_fn[key][0](
++                                zone, *args, timeout=timeout, sender=sender
++                            )
+                         else:
+-                            setting_to_fn[key][0](zone, args, timeout=0, sender=sender)
++                            setting_to_fn[key][0](zone, args, timeout=timeout, sender=sender)
+             else: # bool
+                 if key in ["icmp_block_inversion"]:
+                     # no timeout arg
+                     setting_to_fn[key][0](zone, sender=sender)
+                 else:
+-                    setting_to_fn[key][0](zone, timeout=0, sender=sender)
++                    setting_to_fn[key][0](zone, timeout=timeout, sender=sender)
+ 
+     def addTimeout(self, tag, _id):
+         if _id not in self._timeouts:
+diff --git a/src/firewall/server/firewalld.py b/src/firewall/server/firewalld.py
+index cb786b63f93f..d796c1d45e9c 100644
+--- a/src/firewall/server/firewalld.py
++++ b/src/firewall/server/firewalld.py
+@@ -939,12 +939,21 @@ class FirewallD(DbusServiceObject):
+         self.accessCheck(sender)
+         self.fw.zone.set_config_with_settings_dict(zone, dbus_to_python(settings), sender)
+         self.ZoneUpdated(zone, settings)
++        if "timeout" in settings and settings["timeout"] > 0:
++            GLib.timeout_add_seconds(
++                settings["timeout"],
++                self.ZoneUpdatedCurrentSettings,
++                zone,
++            )
+ 
+     @dbus.service.signal(config.dbus.DBUS_INTERFACE_ZONE, signature='sa{sv}')
+     @dbus_handle_exceptions
+     def ZoneUpdated(self, zone, settings):
+         log.debug1("zone.ZoneUpdated('%s', '%s')" % (zone, settings))
+ 
++    def ZoneUpdatedCurrentSettings(self, zone):
++        self.ZoneUpdated(zone, self.fw.zone.get_config_with_settings_dict(zone))
++
+     @dbus_polkit_require_auth(config.dbus.PK_ACTION_CONFIG_INFO)
+     @dbus_service_method(config.dbus.DBUS_INTERFACE_POLICY, in_signature='s',
+                          out_signature="a{sv}")
+-- 
+2.52.0
+

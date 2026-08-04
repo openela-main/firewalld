@@ -1,0 +1,42 @@
+From 21c9e9ad3811a9679e494a1fe32834edf96393af Mon Sep 17 00:00:00 2001
+From: Eric Garver <eric@garver.life>
+Date: Fri, 13 Sep 2024 13:38:07 -0400
+Subject: [PATCH 49/70] v2.3.0: fix(policy): timeout argument for rich rules
+
+This is inconsequential, but noticed which looking at other changes.
+
+(cherry picked from commit 24f0e4ffc9dead83f178d4fdced6cd08852c6d9e)
+---
+ src/firewall/core/fw_policy.py | 2 +-
+ src/firewall/core/fw_zone.py   | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/firewall/core/fw_policy.py b/src/firewall/core/fw_policy.py
+index ff6ac07a2dc1..0a3c37224882 100644
+--- a/src/firewall/core/fw_policy.py
++++ b/src/firewall/core/fw_policy.py
+@@ -170,7 +170,7 @@ class FirewallPolicy(object):
+         # stupid wrappers to convert rich rule string to rich rule object
+         from firewall.core.rich import Rich_Rule
+         def add_rule_wrapper(policy, rule_str, timeout=0, sender=None):
+-            self.add_rule(policy, Rich_Rule(rule_str=rule_str), timeout=0, sender=sender)
++            self.add_rule(policy, Rich_Rule(rule_str=rule_str), timeout=timeout, sender=sender)
+         def remove_rule_wrapper(policy, rule_str):
+             self.remove_rule(policy, Rich_Rule(rule_str=rule_str))
+ 
+diff --git a/src/firewall/core/fw_zone.py b/src/firewall/core/fw_zone.py
+index cdf080895e50..6c659047b97d 100644
+--- a/src/firewall/core/fw_zone.py
++++ b/src/firewall/core/fw_zone.py
+@@ -343,7 +343,7 @@ class FirewallZone(object):
+     def set_config_with_settings_dict(self, zone, settings, sender):
+         # stupid wrappers to convert rich rule string to rich rule object
+         def add_rule_wrapper(zone, rule_str, timeout=0, sender=None):
+-            self.add_rule(zone, Rich_Rule(rule_str=rule_str), timeout=0, sender=sender)
++            self.add_rule(zone, Rich_Rule(rule_str=rule_str), timeout=timeout, sender=sender)
+         def remove_rule_wrapper(zone, rule_str):
+             self.remove_rule(zone, Rich_Rule(rule_str=rule_str))
+ 
+-- 
+2.52.0
+

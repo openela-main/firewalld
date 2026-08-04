@@ -1,0 +1,78 @@
+From 53686874a4dfb7cf2ec5a7a31969e8c19e64d1c4 Mon Sep 17 00:00:00 2001
+From: Eric Garver <eric@garver.life>
+Date: Mon, 1 Dec 2025 14:24:36 -0500
+Subject: [PATCH 53/70] v2.5.0: chore(zone): port: move timeouts to policy
+
+(cherry picked from commit 5db0925a9478ce5f6dd719f34a0da3c7185d4647)
+---
+ src/firewall/core/fw_policy.py   |  8 ++++++++
+ src/firewall/server/firewalld.py | 13 +------------
+ 2 files changed, 9 insertions(+), 12 deletions(-)
+
+diff --git a/src/firewall/core/fw_policy.py b/src/firewall/core/fw_policy.py
+index 8087f4bf9509..733758d7d3f7 100644
+--- a/src/firewall/core/fw_policy.py
++++ b/src/firewall/core/fw_policy.py
+@@ -690,6 +690,12 @@ class FirewallPolicy(object):
+             port_id = self.__port_id(range, protocol)
+             transaction.add_post(self.__unregister_port, _obj, port_id)
+ 
++        if timeout > 0:
++            tag = GLib.timeout_add_seconds(
++                timeout, self.remove_port, _policy, port, protocol
++            )
++            self.addTimeout(tag, ("port", _policy, port, protocol))
++
+         if use_transaction is None:
+             transaction.execute(True)
+ 
+@@ -734,6 +740,8 @@ class FirewallPolicy(object):
+             port_id = self.__port_id(range, protocol)
+             transaction.add_post(self.__unregister_port, _obj, port_id)
+ 
++        self.removeTimeout(("port", _policy, port, protocol))
++
+         if use_transaction is None:
+             transaction.execute(True)
+ 
+diff --git a/src/firewall/server/firewalld.py b/src/firewall/server/firewalld.py
+index 58c773732953..939fb687a7af 100644
+--- a/src/firewall/server/firewalld.py
++++ b/src/firewall/server/firewalld.py
+@@ -1627,14 +1627,6 @@ class FirewallD(DbusServiceObject):
+ 
+     # PORTS
+ 
+-    @dbus_handle_exceptions
+-    def disableTimedPort(self, zone, port, protocol):
+-        log.debug1("zone.disableTimedPort('%s', '%s', '%s')" % \
+-                       (zone, port, protocol))
+-        del self._timeouts[zone][(port, protocol)]
+-        self.fw.zone.remove_port(zone, port, protocol)
+-        self.PortRemoved(zone, port, protocol)
+-
+     @dbus_polkit_require_auth(config.dbus.PK_ACTION_CONFIG)
+     @dbus_service_method(config.dbus.DBUS_INTERFACE_ZONE, in_signature='sssi',
+                          out_signature='s')
+@@ -1651,9 +1643,7 @@ class FirewallD(DbusServiceObject):
+         _zone = self.fw.zone.add_port(zone, port, protocol, timeout, sender)
+ 
+         if timeout > 0:
+-            tag = GLib.timeout_add_seconds(timeout, self.disableTimedPort,
+-                                           _zone, port, protocol)
+-            self.addTimeout(_zone, (port, protocol), tag)
++            GLib.timeout_add_seconds(timeout, self.PortRemoved, _zone, port, protocol)
+ 
+         self.PortAdded(_zone, port, protocol, timeout)
+         return _zone
+@@ -1672,7 +1662,6 @@ class FirewallD(DbusServiceObject):
+         self.accessCheck(sender)
+         _zone= self.fw.zone.remove_port(zone, port, protocol)
+ 
+-        self.removeTimeout(_zone, (port, protocol))
+         self.PortRemoved(_zone, port, protocol)
+         return _zone
+ 
+-- 
+2.52.0
+

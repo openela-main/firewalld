@@ -1,0 +1,78 @@
+From 45175cdb284572a7a888ee285aa8a645e41dd448 Mon Sep 17 00:00:00 2001
+From: Eric Garver <eric@garver.life>
+Date: Mon, 1 Dec 2025 14:27:17 -0500
+Subject: [PATCH 56/70] v2.5.0: chore(zone): icmp_block: move timeouts to
+ policy
+
+(cherry picked from commit 426ba555b74958a3e43a62c2f0da4013b408fb05)
+---
+ src/firewall/core/fw_policy.py   |  8 ++++++++
+ src/firewall/server/firewalld.py | 12 +-----------
+ 2 files changed, 9 insertions(+), 11 deletions(-)
+
+diff --git a/src/firewall/core/fw_policy.py b/src/firewall/core/fw_policy.py
+index 70ca2ecf20d3..5382c9c51ef5 100644
+--- a/src/firewall/core/fw_policy.py
++++ b/src/firewall/core/fw_policy.py
+@@ -1168,6 +1168,12 @@ class FirewallPolicy(object):
+         if _obj.applied:
+             self._icmp_block(True, _policy, icmp, transaction)
+ 
++        if timeout > 0:
++            tag = GLib.timeout_add_seconds(
++                timeout, self.remove_icmp_block, _policy, icmp
++            )
++            self.addTimeout(tag, ("icmp_block", _policy, icmp))
++
+         self.__register_icmp_block(_obj, icmp_id, timeout, sender)
+         transaction.add_fail(self.__unregister_icmp_block, _obj, icmp_id)
+ 
+@@ -1198,6 +1204,8 @@ class FirewallPolicy(object):
+         if _obj.applied:
+             self._icmp_block(False, _policy, icmp, transaction)
+ 
++        self.removeTimeout(("icmp_block", _policy, icmp))
++
+         transaction.add_post(self.__unregister_icmp_block, _obj, icmp_id)
+ 
+         if use_transaction is None:
+diff --git a/src/firewall/server/firewalld.py b/src/firewall/server/firewalld.py
+index 66321939237f..913c9a8e173a 100644
+--- a/src/firewall/server/firewalld.py
++++ b/src/firewall/server/firewalld.py
+@@ -2028,13 +2028,6 @@ class FirewallD(DbusServiceObject):
+ 
+     # ICMP BLOCK
+ 
+-    @dbus_handle_exceptions
+-    def disableTimedIcmpBlock(self, zone, icmp, sender): # pylint: disable=W0613
+-        log.debug1("zone.disableTimedIcmpBlock('%s', '%s')" % (zone, icmp))
+-        del self._timeouts[zone][icmp]
+-        self.fw.zone.remove_icmp_block(zone, icmp)
+-        self.IcmpBlockRemoved(zone, icmp)
+-
+     @dbus_polkit_require_auth(config.dbus.PK_ACTION_CONFIG)
+     @dbus_service_method(config.dbus.DBUS_INTERFACE_ZONE, in_signature='ssi',
+                          out_signature='s')
+@@ -2049,9 +2042,7 @@ class FirewallD(DbusServiceObject):
+         _zone = self.fw.zone.add_icmp_block(zone, icmp, timeout, sender)
+ 
+         if timeout > 0:
+-            tag = GLib.timeout_add_seconds(timeout, self.disableTimedIcmpBlock,
+-                                           _zone, icmp, sender)
+-            self.addTimeout(_zone, icmp, tag)
++            GLib.timeout_add_seconds(timeout, self.IcmpBlockRemoved, _zone, icmp)
+ 
+         self.IcmpBlockAdded(_zone, icmp, timeout)
+         return _zone
+@@ -2068,7 +2059,6 @@ class FirewallD(DbusServiceObject):
+         self.accessCheck(sender)
+         _zone = self.fw.zone.remove_icmp_block(zone, icmp)
+ 
+-        self.removeTimeout(_zone, icmp)
+         self.IcmpBlockRemoved(_zone, icmp)
+         return _zone
+ 
+-- 
+2.52.0
+

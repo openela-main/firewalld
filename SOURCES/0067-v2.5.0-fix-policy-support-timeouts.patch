@@ -1,0 +1,97 @@
+From 1ffa7613a57118ff62158c0a90b3b2d168c47c25 Mon Sep 17 00:00:00 2001
+From: Eric Garver <eric@garver.life>
+Date: Wed, 3 Dec 2025 16:21:24 -0500
+Subject: [PATCH 67/70] v2.5.0: fix(policy): support timeouts
+
+Fixes: #1381
+Fixes: RHEL-129918
+Fixes: RHEL-95705
+Fixes: RHEL-5795
+(cherry picked from commit 16d8c4dd54e43b9cc66c4707b06a39cfbbd95825)
+---
+ src/firewall-cmd.in            |  2 +-
+ src/firewall/client.py         |  6 ++++--
+ src/firewall/core/fw_policy.py | 16 ++++++++++++++++
+ 3 files changed, 21 insertions(+), 3 deletions(-)
+
+diff --git a/src/firewall-cmd.in b/src/firewall-cmd.in
+index eb0ac7e48e3c..12df581498ef 100755
+--- a/src/firewall-cmd.in
++++ b/src/firewall-cmd.in
+@@ -3007,7 +3007,7 @@ elif a.policy:
+         cmd.query_sequence(a.query_icmp_block, settings.queryIcmpBlock,
+                            None, "'%s'")
+ 
+-    fw.setPolicySettings(a.policy, settings)
++    fw.setPolicySettings(a.policy, settings, a.timeout)
+ 
+ # endif a.policy
+ #
+diff --git a/src/firewall/client.py b/src/firewall/client.py
+index 268a4a947da9..b30b0d12f738 100644
+--- a/src/firewall/client.py
++++ b/src/firewall/client.py
+@@ -3293,8 +3293,10 @@ class FirewallClient(object):
+         return FirewallClientPolicySettings(dbus_to_python(self.fw_policy.getPolicySettings(policy)))
+ 
+     @handle_exceptions
+-    def setPolicySettings(self, policy, settings):
+-        self.fw_policy.setPolicySettings(policy, settings.getRuntimeSettingsDbusDict())
++    def setPolicySettings(self, policy, settings, timeout=0):
++        settings = settings.getRuntimeSettingsDbusDict()
++        settings["timeout"] = timeout
++        self.fw_policy.setPolicySettings(policy, settings)
+ 
+     @handle_exceptions
+     def getPolicies(self):
+diff --git a/src/firewall/core/fw_policy.py b/src/firewall/core/fw_policy.py
+index 624f8420dc5c..0a0d1ded5fe3 100644
+--- a/src/firewall/core/fw_policy.py
++++ b/src/firewall/core/fw_policy.py
+@@ -286,6 +286,12 @@ class FirewallPolicy(object):
+             self.__register_ingress_zone(_obj, zone_id, timeout, sender)
+             transaction.add_fail(self.__unregister_ingress_zone, _obj, zone_id)
+ 
++        if timeout > 0:
++            tag = GLib.timeout_add_seconds(
++                timeout, self.remove_ingress_zone, _policy, zone
++            )
++            self.addTimeout(tag, ("ingress_zone", _policy, zone))
++
+         if use_transaction is None:
+             transaction.execute(True)
+ 
+@@ -322,6 +328,8 @@ class FirewallPolicy(object):
+         else:
+             transaction.add_post(self.__unregister_ingress_zone, _obj, zone_id)
+ 
++        self.removeTimeout(("ingress_zone", _policy, zone))
++
+         if use_transaction is None:
+             transaction.execute(True)
+ 
+@@ -384,6 +392,12 @@ class FirewallPolicy(object):
+             self.__register_egress_zone(_obj, zone_id, timeout, sender)
+             transaction.add_fail(self.__unregister_egress_zone, _obj, zone_id)
+ 
++        if timeout > 0:
++            tag = GLib.timeout_add_seconds(
++                timeout, self.remove_egress_zone, _policy, zone
++            )
++            self.addTimeout(tag, ("egress_zone", _policy, zone))
++
+         if use_transaction is None:
+             transaction.execute(True)
+ 
+@@ -420,6 +434,8 @@ class FirewallPolicy(object):
+         else:
+             transaction.add_post(self.__unregister_egress_zone, _obj, zone_id)
+ 
++        self.removeTimeout(("egress_zone", _policy, zone))
++
+         if use_transaction is None:
+             transaction.execute(True)
+ 
+-- 
+2.52.0
+

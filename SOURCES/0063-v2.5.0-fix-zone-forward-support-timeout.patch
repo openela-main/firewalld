@@ -1,0 +1,76 @@
+From 567de9771d0a916d2c2a6895d5bce4e764eefe66 Mon Sep 17 00:00:00 2001
+From: Eric Garver <eric@garver.life>
+Date: Thu, 20 Nov 2025 15:49:04 -0500
+Subject: [PATCH 63/70] v2.5.0: fix(zone): forward: support timeout
+
+(cherry picked from commit f1c9f6ad8c22d47906ef57ac67a7af773b783bb8)
+---
+ src/firewall-cmd.in          | 2 +-
+ src/firewall/client.py       | 4 ++--
+ src/firewall/core/fw_zone.py | 8 ++++++++
+ 3 files changed, 11 insertions(+), 3 deletions(-)
+
+diff --git a/src/firewall-cmd.in b/src/firewall-cmd.in
+index 755e25e1c1ae..eb0ac7e48e3c 100755
+--- a/src/firewall-cmd.in
++++ b/src/firewall-cmd.in
+@@ -3086,7 +3086,7 @@ elif a.query_source_port:
+ 
+ # forward
+ elif a.add_forward:
+-    fw.addForward(zone)
++    fw.addForward(zone, a.timeout)
+ elif a.remove_forward:
+     fw.removeForward(zone)
+ elif a.query_forward:
+diff --git a/src/firewall/client.py b/src/firewall/client.py
+index c710df1b6edf..268a4a947da9 100644
+--- a/src/firewall/client.py
++++ b/src/firewall/client.py
+@@ -3432,8 +3432,8 @@ class FirewallClient(object):
+     # forward
+ 
+     @handle_exceptions
+-    def addForward(self, zone):
+-        self.fw_zone.setZoneSettings2(zone, {"forward": True})
++    def addForward(self, zone, timeout=0):
++        self.fw_zone.setZoneSettings2(zone, {"forward": True, "timeout": timeout})
+ 
+     @handle_exceptions
+     def queryForward(self, zone):
+diff --git a/src/firewall/core/fw_zone.py b/src/firewall/core/fw_zone.py
+index de01aeb30a59..302b87267c1d 100644
+--- a/src/firewall/core/fw_zone.py
++++ b/src/firewall/core/fw_zone.py
+@@ -19,6 +19,8 @@
+ # along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ #
+ 
++from gi.repository import GLib
++
+ import copy
+ from firewall.core.base import SHORTCUTS, DEFAULT_ZONE_TARGET, SOURCE_IPSET_TYPES
+ from firewall.core.fw_transaction import FirewallTransaction
+@@ -1043,6 +1045,10 @@ class FirewallZone(object):
+         if _obj.applied:
+             self._forward(True, _zone, transaction)
+ 
++        if timeout > 0:
++            tag = GLib.timeout_add_seconds(timeout, self.remove_forward, _zone)
++            self.addTimeout(tag, ("forward", _zone))
++
+         self.__register_forward(_obj, timeout, sender)
+         transaction.add_fail(self.__unregister_forward, _obj)
+ 
+@@ -1071,6 +1077,8 @@ class FirewallZone(object):
+         if _obj.applied:
+             self._forward(False, _zone, transaction)
+ 
++        self.removeTimeout(("forward", _zone))
++
+         transaction.add_post(self.__unregister_forward, _obj)
+ 
+         if use_transaction is None:
+-- 
+2.52.0
+

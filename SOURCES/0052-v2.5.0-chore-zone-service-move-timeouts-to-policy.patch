@@ -1,0 +1,77 @@
+From 1f650ad8b02f761732305c5ffc9ae84d774bb48a Mon Sep 17 00:00:00 2001
+From: Eric Garver <eric@garver.life>
+Date: Mon, 1 Dec 2025 14:19:23 -0500
+Subject: [PATCH 52/70] v2.5.0: chore(zone): service: move timeouts to policy
+
+(cherry picked from commit 248d69433f236dd67f9104ace8baf61298b044eb)
+---
+ src/firewall/core/fw_policy.py   |  8 ++++++++
+ src/firewall/server/firewalld.py | 12 +-----------
+ 2 files changed, 9 insertions(+), 11 deletions(-)
+
+diff --git a/src/firewall/core/fw_policy.py b/src/firewall/core/fw_policy.py
+index 444d84fe9023..8087f4bf9509 100644
+--- a/src/firewall/core/fw_policy.py
++++ b/src/firewall/core/fw_policy.py
+@@ -556,6 +556,12 @@ class FirewallPolicy(object):
+         if _obj.applied:
+             self._service(True, _policy, service, transaction)
+ 
++        if timeout > 0:
++            tag = GLib.timeout_add_seconds(
++                timeout, self.remove_service, _policy, service
++            )
++            self.addTimeout(tag, ("service", _policy, service))
++
+         self.__register_service(_obj, service_id, timeout, sender)
+         transaction.add_fail(self.__unregister_service, _obj, service_id)
+ 
+@@ -587,6 +593,8 @@ class FirewallPolicy(object):
+         if _obj.applied:
+             self._service(False, _policy, service, transaction)
+ 
++        self.removeTimeout(("service", _policy, service))
++
+         transaction.add_post(self.__unregister_service, _obj, service_id)
+ 
+         if use_transaction is None:
+diff --git a/src/firewall/server/firewalld.py b/src/firewall/server/firewalld.py
+index fc85d3e0c359..58c773732953 100644
+--- a/src/firewall/server/firewalld.py
++++ b/src/firewall/server/firewalld.py
+@@ -1553,13 +1553,6 @@ class FirewallD(DbusServiceObject):
+ 
+     # SERVICES
+ 
+-    @dbus_handle_exceptions
+-    def disableTimedService(self, zone, service):
+-        log.debug1("zone.disableTimedService('%s', '%s')" % (zone, service))
+-        del self._timeouts[zone][service]
+-        self.fw.zone.remove_service(zone, service)
+-        self.ServiceRemoved(zone, service)
+-
+     @dbus_polkit_require_auth(config.dbus.PK_ACTION_CONFIG)
+     @dbus_service_method(config.dbus.DBUS_INTERFACE_ZONE, in_signature='ssi',
+                          out_signature='s')
+@@ -1575,9 +1568,7 @@ class FirewallD(DbusServiceObject):
+         _zone = self.fw.zone.add_service(zone, service, timeout, sender)
+ 
+         if timeout > 0:
+-            tag = GLib.timeout_add_seconds(timeout, self.disableTimedService,
+-                                           _zone, service)
+-            self.addTimeout(_zone, service, tag)
++            GLib.timeout_add_seconds(timeout, self.ServiceRemoved, _zone, service)
+ 
+         self.ServiceAdded(_zone, service, timeout)
+         return _zone
+@@ -1595,7 +1586,6 @@ class FirewallD(DbusServiceObject):
+ 
+         _zone = self.fw.zone.remove_service(zone, service)
+ 
+-        self.removeTimeout(_zone, service)
+         self.ServiceRemoved(_zone, service)
+         return _zone
+ 
+-- 
+2.52.0
+

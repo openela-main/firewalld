@@ -1,7 +1,7 @@
 Summary: A firewall daemon with D-Bus interface providing a dynamic firewall
 Name: firewalld
 Version: 1.3.4
-Release: 18%{?dist}
+Release: 19%{?dist}
 URL:     http://www.firewalld.org
 License: GPLv2+
 Source0: https://github.com/firewalld/firewalld/releases/download/v%{version}/firewalld-%{version}.tar.bz2
@@ -53,6 +53,27 @@ Patch45: 0045-v2.4.0-chore-nftables-simplify-icmp-match-fragments.patch
 Patch46: 0046-v2.4.0-chore-nftables-move-_icmp_types_fragments-ins.patch
 Patch47: 0047-v2.4.0-chore-ipXtables-simplify-icmp-match-fragments.patch
 Patch48: 0048-v2.4.0-fix-policy-allow-host-ipv6-allow-MLD-packets.patch
+Patch49: 0049-v2.3.0-fix-policy-timeout-argument-for-rich-rules.patch
+Patch50: 0050-v2.5.0-test-functions-fix-macro-CHECK_NFT_CT_HELPER.patch
+Patch51: 0051-v2.5.0-chore-fw_policy-add-utility-functions-to-supp.patch
+Patch52: 0052-v2.5.0-chore-zone-service-move-timeouts-to-policy.patch
+Patch53: 0053-v2.5.0-chore-zone-port-move-timeouts-to-policy.patch
+Patch54: 0054-v2.5.0-chore-zone-source_port-move-timeouts-to-polic.patch
+Patch55: 0055-v2.5.0-chore-zone-forward_port-move-timeouts-to-poli.patch
+Patch56: 0056-v2.5.0-chore-zone-icmp_block-move-timeouts-to-policy.patch
+Patch57: 0057-v2.5.0-chore-zone-masquerade-move-timeouts-to-policy.patch
+Patch58: 0058-v2.5.0-chore-zone-protocol-move-timeouts-to-policy.patch
+Patch59: 0059-v2.5.0-chore-zone-rule-move-timeouts-to-policy.patch
+Patch60: 0060-v2.5.0-chore-zone-remove-daemon-level-timeout-code.patch
+Patch61: 0061-v2.5.0-chore-fw_zone-add-utility-functions-to-suppor.patch
+Patch62: 0062-v2.5.0-chore-fw_zone-support-timeouts-via-dict-API.patch
+Patch63: 0063-v2.5.0-fix-zone-forward-support-timeout.patch
+Patch64: 0064-v2.5.0-test-zone-forward-move-test-to-features.patch
+Patch65: 0065-v2.5.0-test-zone-verify-timeout-works.patch
+Patch66: 0066-v2.5.0-chore-fw_policy-support-timeouts.patch
+Patch67: 0067-v2.5.0-fix-policy-support-timeouts.patch
+Patch68: 0068-v2.5.0-fix-cli-policy-allow-timeout-with-ingress-zon.patch
+Patch69: 0069-v2.5.0-test-policy-verify-timeout-works.patch
 BuildArch: noarch
 BuildRequires: autoconf
 BuildRequires: automake
@@ -276,6 +297,10 @@ rm -rf %{buildroot}%{_datadir}/firewalld/testsuite
 %{_mandir}/man1/firewall-config*.1*
 
 %changelog
+* Fri Jul 10 2026 Eric Garver <egarver@redhat.com> - 1.3.4-19
+- fix(zone): forward: support timeout
+- fix(policy): support timeouts
+
 * Tue Dec 02 2025 Eric Garver <egarver@redhat.com> - 1.3.4-18
 - fix(policy): allow-host-ipv6: allow MLD packets
 

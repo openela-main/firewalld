@@ -1,0 +1,60 @@
+From a21b62942819c4fd5d83fad49e45d0033954aa24 Mon Sep 17 00:00:00 2001
+From: Eric Garver <eric@garver.life>
+Date: Mon, 1 Dec 2025 14:18:42 -0500
+Subject: [PATCH 51/70] v2.5.0: chore(fw_policy): add utility functions to
+ support timeouts
+
+(cherry picked from commit 2a14e41b153c397cce3379be4e7ee2651c8d2a79)
+---
+ src/firewall/core/fw_policy.py | 14 ++++++++++++++
+ 1 file changed, 14 insertions(+)
+
+diff --git a/src/firewall/core/fw_policy.py b/src/firewall/core/fw_policy.py
+index 0a3c37224882..444d84fe9023 100644
+--- a/src/firewall/core/fw_policy.py
++++ b/src/firewall/core/fw_policy.py
+@@ -2,6 +2,8 @@
+ #
+ # SPDX-License-Identifier: GPL-2.0-or-later
+ 
++from gi.repository import GLib
++
+ import copy
+ 
+ from firewall.core.logger import log
+@@ -23,6 +25,7 @@ class FirewallPolicy(object):
+         self._fw = fw
+         self._chains = { }
+         self._policies = { }
++        self._timeouts = {}
+ 
+     def __repr__(self):
+         return '%s(%r, %r)' % (self.__class__, self._chains, self._policies)
+@@ -30,6 +33,8 @@ class FirewallPolicy(object):
+     def cleanup(self):
+         self._chains.clear()
+         self._policies.clear()
++        for _id in self._timeouts:
++            self.removeTimeout(_id)
+ 
+     # transaction
+ 
+@@ -217,6 +222,15 @@ class FirewallPolicy(object):
+             else: # bool
+                 setting_to_fn[key][0](policy, timeout=0, sender=sender)
+ 
++    def addTimeout(self, tag, _id):
++        if _id not in self._timeouts:
++            self._timeouts[_id] = tag
++
++    def removeTimeout(self, _id):
++        if _id in self._timeouts:
++            GLib.source_remove(self._timeouts[_id])
++            del self._timeouts[_id]
++
+     # ingress zones
+ 
+     def check_ingress_zone(self, zone):
+-- 
+2.52.0
+

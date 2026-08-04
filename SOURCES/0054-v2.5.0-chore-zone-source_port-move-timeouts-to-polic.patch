@@ -1,0 +1,81 @@
+From cbdfc33f078818127e4be2e510b665ca1f0f6bda Mon Sep 17 00:00:00 2001
+From: Eric Garver <eric@garver.life>
+Date: Mon, 1 Dec 2025 15:06:56 -0500
+Subject: [PATCH 54/70] v2.5.0: chore(zone): source_port: move timeouts to
+ policy
+
+(cherry picked from commit 41a2573afefb4d20801b27e3862293c0e06a344d)
+---
+ src/firewall/core/fw_policy.py   |  8 ++++++++
+ src/firewall/server/firewalld.py | 15 +++------------
+ 2 files changed, 11 insertions(+), 12 deletions(-)
+
+diff --git a/src/firewall/core/fw_policy.py b/src/firewall/core/fw_policy.py
+index 733758d7d3f7..ee652d892d4a 100644
+--- a/src/firewall/core/fw_policy.py
++++ b/src/firewall/core/fw_policy.py
+@@ -886,6 +886,12 @@ class FirewallPolicy(object):
+             port_id = self.__source_port_id(range, protocol)
+             transaction.add_post(self.__unregister_source_port, _obj, port_id)
+ 
++        if timeout > 0:
++            tag = GLib.timeout_add_seconds(
++                timeout, self.remove_source_port, _policy, port, protocol
++            )
++            self.addTimeout(tag, ("source_port", _policy, port, protocol))
++
+         if use_transaction is None:
+             transaction.execute(True)
+ 
+@@ -930,6 +936,8 @@ class FirewallPolicy(object):
+             port_id = self.__source_port_id(range, protocol)
+             transaction.add_post(self.__unregister_source_port, _obj, port_id)
+ 
++        self.removeTimeout(("source_port", _policy, port, protocol))
++
+         if use_transaction is None:
+             transaction.execute(True)
+ 
+diff --git a/src/firewall/server/firewalld.py b/src/firewall/server/firewalld.py
+index 939fb687a7af..75fa486f0f92 100644
+--- a/src/firewall/server/firewalld.py
++++ b/src/firewall/server/firewalld.py
+@@ -1787,14 +1787,6 @@ class FirewallD(DbusServiceObject):
+ 
+     # SOURCE PORTS
+ 
+-    @dbus_handle_exceptions
+-    def disableTimedSourcePort(self, zone, port, protocol):
+-        log.debug1("zone.disableTimedSourcePort('%s', '%s', '%s')" % \
+-                   (zone, port, protocol))
+-        del self._timeouts[zone][("sport", port, protocol)]
+-        self.fw.zone.remove_source_port(zone, port, protocol)
+-        self.SourcePortRemoved(zone, port, protocol)
+-
+     @dbus_polkit_require_auth(config.dbus.PK_ACTION_CONFIG)
+     @dbus_service_method(config.dbus.DBUS_INTERFACE_ZONE, in_signature='sssi',
+                          out_signature='s')
+@@ -1812,9 +1804,9 @@ class FirewallD(DbusServiceObject):
+                                              sender)
+ 
+         if timeout > 0:
+-            tag = GLib.timeout_add_seconds(timeout, self.disableTimedSourcePort,
+-                                           _zone, port, protocol)
+-            self.addTimeout(_zone, ("sport", port, protocol), tag)
++            GLib.timeout_add_seconds(
++                timeout, self.SourcePortRemoved, _zone, port, protocol
++            )
+ 
+         self.SourcePortAdded(_zone, port, protocol, timeout)
+         return _zone
+@@ -1833,7 +1825,6 @@ class FirewallD(DbusServiceObject):
+         self.accessCheck(sender)
+         _zone= self.fw.zone.remove_source_port(zone, port, protocol)
+ 
+-        self.removeTimeout(_zone, ("sport", port, protocol))
+         self.SourcePortRemoved(_zone, port, protocol)
+         return _zone
+ 
+-- 
+2.52.0
+

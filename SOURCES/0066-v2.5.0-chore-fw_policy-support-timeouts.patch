@@ -1,0 +1,74 @@
+From 83d090687b36ac4c704117ec619726a8d8275e86 Mon Sep 17 00:00:00 2001
+From: Eric Garver <eric@garver.life>
+Date: Mon, 1 Dec 2025 14:53:28 -0500
+Subject: [PATCH 66/70] v2.5.0: chore(fw_policy): support timeouts
+
+(cherry picked from commit 0749229070a3f201e435ba8101be420fa0e025ad)
+---
+ src/firewall/core/fw_policy.py   | 14 +++++++++++---
+ src/firewall/server/firewalld.py |  9 +++++++++
+ 2 files changed, 20 insertions(+), 3 deletions(-)
+
+diff --git a/src/firewall/core/fw_policy.py b/src/firewall/core/fw_policy.py
+index 6203824166c3..624f8420dc5c 100644
+--- a/src/firewall/core/fw_policy.py
++++ b/src/firewall/core/fw_policy.py
+@@ -192,6 +192,12 @@ class FirewallPolicy(object):
+             "egress_zones": (self.add_egress_zone, self.remove_egress_zone),
+         }
+ 
++        timeout = 0
++        if "timeout" in settings:
++            timeout = settings["timeout"]
++            settings = copy.copy(settings)
++            del settings["timeout"]
++
+         # do a full config check on a temporary object before trying to make
+         # the runtime changes
+         old_obj = self.get_policy(policy)
+@@ -216,11 +222,13 @@ class FirewallPolicy(object):
+             if isinstance(add_settings[key], list):
+                 for args in add_settings[key]:
+                     if isinstance(args, tuple):
+-                        setting_to_fn[key][0](policy, *args, timeout=0, sender=sender)
++                        setting_to_fn[key][0](
++                            policy, *args, timeout=timeout, sender=sender
++                        )
+                     else:
+-                        setting_to_fn[key][0](policy, args, timeout=0, sender=sender)
++                        setting_to_fn[key][0](policy, args, timeout=timeout, sender=sender)
+             else: # bool
+-                setting_to_fn[key][0](policy, timeout=0, sender=sender)
++                setting_to_fn[key][0](policy, timeout=timeout, sender=sender)
+ 
+     def addTimeout(self, tag, _id):
+         if _id not in self._timeouts:
+diff --git a/src/firewall/server/firewalld.py b/src/firewall/server/firewalld.py
+index d796c1d45e9c..ec0c3ff4b457 100644
+--- a/src/firewall/server/firewalld.py
++++ b/src/firewall/server/firewalld.py
+@@ -972,12 +972,21 @@ class FirewallD(DbusServiceObject):
+         self.accessCheck(sender)
+         self.fw.policy.set_config_with_settings_dict(policy, dbus_to_python(settings), sender)
+         self.PolicyUpdated(policy, settings)
++        if "timeout" in settings and settings["timeout"] > 0:
++            GLib.timeout_add_seconds(
++                settings["timeout"],
++                self.PolicyUpdatedCurrentSettings,
++                policy,
++            )
+ 
+     @dbus.service.signal(config.dbus.DBUS_INTERFACE_POLICY, signature='sa{sv}')
+     @dbus_handle_exceptions
+     def PolicyUpdated(self, policy, settings):
+         log.debug1("policy.PolicyUpdated('%s', '%s')" % (policy, settings))
+ 
++    def PolicyUpdatedCurrentSettings(self, policy):
++        self.PolicyUpdated(policy, self.fw.policy.get_config_with_settings_dict(policy))
++
+     @dbus_polkit_require_auth(config.dbus.PK_ACTION_INFO)
+     @dbus_service_method(config.dbus.DBUS_INTERFACE, in_signature='',
+                          out_signature='as')
+-- 
+2.52.0
+

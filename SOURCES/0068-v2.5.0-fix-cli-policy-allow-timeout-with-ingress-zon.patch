@@ -1,0 +1,26 @@
+From 4f965d0dc42c0e88b4a36014e6db9984f7402416 Mon Sep 17 00:00:00 2001
+From: Eric Garver <eric@garver.life>
+Date: Fri, 5 Dec 2025 09:51:20 -0500
+Subject: [PATCH 68/70] v2.5.0: fix(cli): policy: allow timeout with
+ --ingress-zone/--egress-zone
+
+(cherry picked from commit 4227d2a9b91bdf84823724b6299b984d29385ed6)
+---
+ src/firewall-cmd.in | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/src/firewall-cmd.in b/src/firewall-cmd.in
+index 12df581498ef..6973a643bf47 100755
+--- a/src/firewall-cmd.in
++++ b/src/firewall-cmd.in
+@@ -1104,6 +1104,7 @@ else:
+ if a.timeout and not (a.add_service or a.add_port or a.add_protocol or \
+                       a.add_icmp_block or a.add_forward_port or \
+                       a.add_source_port or a.add_forward or \
++                      a.add_ingress_zone or a.add_egress_zone or \
+                       a.add_masquerade or a.add_rich_rule):
+     cmd.fail(parser.format_usage() + "Wrong --timeout usage")
+ 
+-- 
+2.52.0
+

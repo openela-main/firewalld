@@ -1,0 +1,214 @@
+From 5419b3e69790b4ee2c106d01bc7fba64ba6a2c6f Mon Sep 17 00:00:00 2001
+From: Eric Garver <eric@garver.life>
+Date: Thu, 20 Nov 2025 15:29:07 -0500
+Subject: [PATCH 65/70] v2.5.0: test(zone): verify timeout works
+
+(cherry picked from commit 6214af87870637383671c45ad954be1ebae29c8e)
+---
+ src/tests/features/features.at     |   1 +
+ src/tests/features/zone_timeout.at | 184 +++++++++++++++++++++++++++++
+ 2 files changed, 185 insertions(+)
+ create mode 100644 src/tests/features/zone_timeout.at
+
+diff --git a/src/tests/features/features.at b/src/tests/features/features.at
+index 8f7c6bcafec7..2867132f7b08 100644
+--- a/src/tests/features/features.at
++++ b/src/tests/features/features.at
+@@ -23,3 +23,4 @@ m4_include([features/iptables_no_flush_on_shutdown.at])
+ m4_include([features/reloadpolicy.at])
+ m4_include([features/nftables_table_owner.at])
+ m4_include([features/zone_forward.at])
++m4_include([features/zone_timeout.at])
+diff --git a/src/tests/features/zone_timeout.at b/src/tests/features/zone_timeout.at
+new file mode 100644
+index 000000000000..c0ef68c7cefb
+--- /dev/null
++++ b/src/tests/features/zone_timeout.at
+@@ -0,0 +1,184 @@
++m4_ifdef([TESTING_FIREWALL_OFFLINE_CMD], [], [
++FWD_START_TEST([zone - timeouts])
++AT_KEYWORDS(zone timeout)
++
++FWD_CHECK([--permanent --zone trusted --add-icmp-block-inversion], 0, [ignore])
++FWD_CHECK([--permanent --zone trusted --add-interface foobar], 0, [ignore])
++FWD_CHECK([--permanent --zone trusted --remove-forward], 0, [ignore])
++FWD_RELOAD()
++
++dnl $1 = firewall-cmd args
++dnl $2 = nftables expected input chain rules
++dnl $3 = nftables expected forward chain rules
++dnl $4 = nftables expected nat prerouting chain rules
++dnl $5 = nftables expected nat postrouting chain rules
++dnl $6 = iptables expected input chain rules
++dnl $7 = iptables expected forward chain rules
++dnl $8 = iptables expected nat prerouting chain rules
++dnl $9 = iptables expected nat postrouting chain rules
++m4_define([do_timeout], [dnl
++
++FWD_CHECK([--zone trusted --timeout 2 $1], 0, [ignore])
++FWD_CHECK([--zone trusted --add-service https], 0, [ignore])
++
++NFT_LIST_RULES([inet], [filter_IN_trusted_allow], 0, [dnl
++    table inet firewalld {
++        chain filter_IN_trusted_allow {
++            $2 dnl
++            tcp dport 443 accept
++        }
++    }
++])
++NFT_LIST_RULES([inet], [filter_FWD_trusted_allow], 0, [dnl
++    table inet firewalld {
++        chain filter_FWD_trusted_allow {
++            $3 dnl
++        }
++    }
++])
++NFT_LIST_RULES([inet], [nat_PRE_trusted_allow], 0, [dnl
++    table inet firewalld {
++        chain nat_PRE_trusted_allow {
++            $4 dnl
++        }
++    }
++])
++NFT_LIST_RULES([inet], [nat_POST_trusted_allow], 0, [dnl
++    table inet firewalld {
++        chain nat_POST_trusted_allow {
++            $5 dnl
++        }
++    }
++])
++IPTABLES_LIST_RULES([filter], [IN_trusted_allow], 0, [dnl
++    $6 dnl
++    ACCEPT 6 -- 0.0.0.0/0 0.0.0.0/0 tcp dpt:443
++])
++IPTABLES_LIST_RULES([filter], [FWD_trusted_allow], 0, [dnl
++    $7 dnl
++])
++IPTABLES_LIST_RULES([nat], [PRE_trusted_allow], 0, [dnl
++    $8 dnl
++])
++IPTABLES_LIST_RULES([nat], [POST_trusted_allow], 0, [dnl
++    $9 dnl
++])
++
++sleep 5
++NFT_LIST_RULES([inet], [filter_IN_trusted_allow], 0, [dnl
++    table inet firewalld {
++        chain filter_IN_trusted_allow {
++            tcp dport 443 accept
++        }
++    }
++])
++NFT_LIST_RULES([inet], [filter_FWD_trusted_allow], 0, [dnl
++    table inet firewalld {
++        chain filter_FWD_trusted_allow {
++        }
++    }
++])
++NFT_LIST_RULES([inet], [nat_PRE_trusted_allow], 0, [dnl
++    table inet firewalld {
++        chain nat_PRE_trusted_allow {
++        }
++    }
++])
++NFT_LIST_RULES([inet], [nat_POST_trusted_allow], 0, [dnl
++    table inet firewalld {
++        chain nat_POST_trusted_allow {
++        }
++    }
++])
++IPTABLES_LIST_RULES([filter], [IN_trusted_allow], 0, [dnl
++    ACCEPT 6 -- 0.0.0.0/0 0.0.0.0/0 tcp dpt:443
++])
++IPTABLES_LIST_RULES([filter], [FWD_trusted_allow], 0, [dnl
++])
++IPTABLES_LIST_RULES([nat], [PRE_trusted_allow], 0, [dnl
++])
++IPTABLES_LIST_RULES([nat], [POST_trusted_allow], 0, [dnl
++])
++
++FWD_CHECK([--zone trusted --remove-service https], 0, [ignore])
++
++]) dnl end m4_define()
++
++dnl ##################################
++dnl ##### Test every option that #####
++dnl ##### supports timeouts      #####
++dnl ##################################
++
++do_timeout([--add-port 1234/tcp],
++    tcp dport 1234 accept
++[dnl
++], [], [], [],
++[dnl
++    ACCEPT 6 -- 0.0.0.0/0 0.0.0.0/0 tcp dpt:1234
++], [], [], [])
++
++do_timeout([--add-source-port 1234/tcp],
++[dnl
++    tcp sport 1234 accept
++], [], [], [],
++[dnl
++    ACCEPT 6 -- 0.0.0.0/0 0.0.0.0/0 tcp spt:1234
++], [], [], [])
++
++do_timeout([--add-protocol igmp],
++    meta l4proto igmp accept
++[dnl
++], [], [], [],
++[dnl
++    ACCEPT 2 -- 0.0.0.0/0 0.0.0.0/0
++], [], [], [])
++
++do_timeout([--add-service http],
++    tcp dport 80 accept
++[dnl
++], [], [], [],
++[dnl
++    ACCEPT 6 -- 0.0.0.0/0 0.0.0.0/0 tcp dpt:80
++], [], [], [])
++
++do_timeout([--add-rich-rule 'rule service name=irc accept'],
++[dnl
++    tcp dport 6667 accept
++], [], [], [],
++[dnl
++    ACCEPT 6 -- 0.0.0.0/0 0.0.0.0/0 tcp dpt:6667
++], [], [], [])
++
++do_timeout([--add-icmp-block echo-request],
++[dnl
++    icmp echo-request accept
++    icmpv6 echo-request accept
++], [], [], [],
++[dnl
++    ACCEPT 1 -- 0.0.0.0/0 0.0.0.0/0 icmptype 8
++], [], [], [])
++
++do_timeout([--add-forward],
++[], [dnl
++    oifname "foobar" accept
++], [], [], [], [dnl
++    ACCEPT 0 -- 0.0.0.0/0 0.0.0.0/0
++], [], [])
++
++do_timeout([--add-forward-port port=2222:proto=tcp:toport=22],
++[], [], [dnl
++    meta nfproto ipv4 tcp dport 2222 redirect to :22
++], [], [], [], [dnl
++    DNAT 6 -- 0.0.0.0/0 0.0.0.0/0 tcp dpt:2222 to::22
++], [])
++
++do_timeout([--add-masquerade],
++[], [], [], [dnl
++    meta nfproto ipv4 oifname != "lo" masquerade
++], [], [], [], [dnl
++    MASQUERADE 0 -- 0.0.0.0/0 0.0.0.0/0
++])
++
++m4_undefine([do_timeout])
++FWD_END_TEST()
++])
+-- 
+2.52.0
+

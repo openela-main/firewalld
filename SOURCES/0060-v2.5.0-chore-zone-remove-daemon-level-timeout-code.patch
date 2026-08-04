@@ -1,0 +1,49 @@
+From 475eb2107544a4c8ef113db4a81bf1363247180c Mon Sep 17 00:00:00 2001
+From: Eric Garver <eric@garver.life>
+Date: Mon, 1 Dec 2025 16:29:50 -0500
+Subject: [PATCH 60/70] v2.5.0: chore(zone): remove daemon level timeout code
+
+As its no longer used.
+
+(cherry picked from commit 537af3fcb09bec296869d9ee23c4d4b9b2b72141)
+---
+ src/firewall/server/firewalld.py | 23 -----------------------
+ 1 file changed, 23 deletions(-)
+
+diff --git a/src/firewall/server/firewalld.py b/src/firewall/server/firewalld.py
+index 48429bc8061a..cb786b63f93f 100644
+--- a/src/firewall/server/firewalld.py
++++ b/src/firewall/server/firewalld.py
+@@ -127,29 +127,6 @@ class FirewallD(DbusServiceObject):
+                 return
+             raise FirewallError(errors.ACCESS_DENIED, "lockdown is enabled")
+ 
+-    # timeout functions
+-
+-    @dbus_handle_exceptions
+-    def addTimeout(self, zone, x, tag):
+-        if zone not in self._timeouts:
+-            self._timeouts[zone] = { }
+-        self._timeouts[zone][x] = tag
+-
+-    @dbus_handle_exceptions
+-    def removeTimeout(self, zone, x):
+-        if zone in self._timeouts and x in self._timeouts[zone]:
+-            GLib.source_remove(self._timeouts[zone][x])
+-            del self._timeouts[zone][x]
+-
+-    @dbus_handle_exceptions
+-    def cleanup_timeouts(self):
+-        # cleanup timeouts
+-        for zone in self._timeouts:
+-            for x in self._timeouts[zone]:
+-                GLib.source_remove(self._timeouts[zone][x])
+-            self._timeouts[zone].clear()
+-        self._timeouts.clear()
+-
+     # property handling
+ 
+     @dbus_handle_exceptions
+-- 
+2.52.0
+
