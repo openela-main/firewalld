@@ -1,7 +1,7 @@
 Summary: A firewall daemon with D-Bus interface providing a dynamic firewall
 Name: firewalld
 Version: 0.9.11
-Release: 11%{?dist}
+Release: 12%{?dist}
 URL:     http://www.firewalld.org
 License: GPLv2+
 Source0: https://github.com/firewalld/firewalld/releases/download/v%{version}/firewalld-%{version}.tar.gz
@@ -243,6 +243,9 @@ desktop-file-install --delete-original \
 %{_mandir}/man1/firewall-config*.1*
 
 %changelog
+* Tue Jul 28 2026 Eric Garver <egarver@redhat.com> - 0.9.11-12
+- bump NVR
+
 * Sat Mar 21 2026 Eric Garver <egarver@redhat.com> - 0.9.11-11
 - fix(policy): allow-host-ipv6: allow MLD packets
 
