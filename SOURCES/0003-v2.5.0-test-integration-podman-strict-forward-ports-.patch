@@ -1,0 +1,34 @@
+From ca63b915863e7c486f4f41e094f98f46a837f237 Mon Sep 17 00:00:00 2001
+From: Eric Garver <eric@garver.life>
+Date: Thu, 16 Jul 2026 15:02:12 -0400
+Subject: [PATCH 3/3] v2.5.0: test(integration): podman-strict-forward-ports:
+ expect fail with netavark
+
+Newer podman uses the netavark backend and rejects --publish if
+firewalld is running with StrictForwardPorts=yes. Skip the test if this
+is detected.
+
+Fixes: 84b139f109f8 ("test(integration): add coverage for podman and StrictForwardPorts")
+(cherry picked from commit d5023f550671cb90bf8e745d470f87f3b7864db3)
+---
+ src/tests/integration/podman-strict-forward-ports.at | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/src/tests/integration/podman-strict-forward-ports.at b/src/tests/integration/podman-strict-forward-ports.at
+index fa87a9b18842..c9998defdcb0 100644
+--- a/src/tests/integration/podman-strict-forward-ports.at
++++ b/src/tests/integration/podman-strict-forward-ports.at
+@@ -70,6 +70,10 @@ common_init()
+ AT_CHECK([sed -i 's/^StrictForwardPorts.*/StrictForwardPorts=yes/' ./firewalld.conf])
+ FWD_RELOAD()
+ 
++dnl If podman is using the netavark backend, then it will refuse to start
++dnl with --publish and firewalld StrictForwardPorts=yes.
++AT_SKIP_IF([test $(basename ${PODMAN}) = "podman" && ! ${PODMAN} run --rm --publish 10.10.10.1:55080:80 quay.io/centos/centos:stream9 ls])
++
+ dnl start a container with --publish
+ AT_CHECK([$PODMAN run --rm --detach --publish 10.10.10.1:55080:80 quay.io/centos/centos:stream9 sh -c "dnl
+ echo hello world > index.html && dnl
+-- 
+2.52.0
+

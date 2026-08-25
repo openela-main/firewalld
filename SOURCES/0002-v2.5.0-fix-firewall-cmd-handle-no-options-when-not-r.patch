@@ -1,0 +1,70 @@
+From e708b004c3f3bb31900051ad30b653040de674ea Mon Sep 17 00:00:00 2001
+From: dharmik <dharmikparmar2004@yahoo.com>
+Date: Sat, 4 Jul 2026 17:45:23 +0530
+Subject: [PATCH 2/3] v2.5.0: fix(firewall-cmd): handle no options when not
+ running
+
+Avoid reading the firewalld state property when the client is not
+connected to the daemon. This lets firewall-cmd print the normal
+no-options usage instead of an AttributeError traceback.
+
+Fixes: #1570
+Signed-off-by: dharmik <dharmikparmar2004@yahoo.com>
+---
+ src/firewall-cmd.in                |  2 +-
+ src/tests/regression/gh1570.at     | 20 ++++++++++++++++++++
+ src/tests/regression/regression.at |  1 +
+ 3 files changed, 22 insertions(+), 1 deletion(-)
+ create mode 100644 src/tests/regression/gh1570.at
+
+diff --git a/src/firewall-cmd.in b/src/firewall-cmd.in
+index 9c08de548e16..50a51874e100 100755
+--- a/src/firewall-cmd.in
++++ b/src/firewall-cmd.in
+@@ -1540,7 +1540,7 @@ if not (
+     or options_direct
+     or options_permanent_only
+ ):
+-    state = fw.get_property("state")
++    state = fw.get_property("state") if fw.connected else None
+     if state == "RUNNING":
+         state = "State: running\n\n"
+     elif state == "FAILED":
+diff --git a/src/tests/regression/gh1570.at b/src/tests/regression/gh1570.at
+new file mode 100644
+index 000000000000..fc365c515ec2
+--- /dev/null
++++ b/src/tests/regression/gh1570.at
+@@ -0,0 +1,20 @@
++FWD_START_TEST([cli - no arguments])
++AT_KEYWORDS([cli gh1570 RHEL-60902])
++
++FWD_STOP_FIREWALLD()
++
++dnl Verify CLI with no options does not crash if firewalld is not running.
++FWD_CHECK([], [2], [ignore], [dnl
++State: not running
++
++No options specified
++usage: 'firewall-cmd --help' for usage information or see firewall-cmd(1) man page
++])
++
++dnl Verify offline CLI with no options
++FWD_OFFLINE_CHECK([], [2], [ignore], [dnl
++usage: see firewall-offline-cmd man page
++No option specified.
++])
++
++FWD_END_TEST()
+diff --git a/src/tests/regression/regression.at b/src/tests/regression/regression.at
+index 0fe856f4ae9f..032a998ca94c 100644
+--- a/src/tests/regression/regression.at
++++ b/src/tests/regression/regression.at
+@@ -64,3 +64,4 @@ m4_include([regression/gh1406.at])
+ m4_include([regression/RHEL-67103.at])
+ m4_include([regression/gh1486.at])
+ m4_include([regression/RHEL-186856.at])
++m4_include([regression/gh1570.at])
+-- 
+2.52.0
+

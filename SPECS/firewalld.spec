@@ -1,11 +1,13 @@
 Summary: A firewall daemon with D-Bus interface providing a dynamic firewall
 Name: firewalld
 Version: 2.4.3
-Release: 2%{?dist}
+Release: 4%{?dist}
 URL:     http://www.firewalld.org
 License: GPL-2.0-or-later
 Source0: https://github.com/firewalld/firewalld/releases/download/v%{version}/firewalld-%{version}.tar.bz2
 Patch1: 0001-RHEL-only-Add-cockpit-by-default-to-some-zones.patch
+Patch2: 0002-v2.5.0-fix-firewall-cmd-handle-no-options-when-not-r.patch
+Patch3: 0003-v2.5.0-test-integration-podman-strict-forward-ports-.patch
 BuildArch: noarch
 BuildRequires: autoconf
 BuildRequires: automake
@@ -253,6 +255,12 @@ end
 %{_mandir}/man1/firewall-config*.1*
 
 %changelog
+* Fri Jun 31 2026 Eric Garver <egarver@redhat.com> - 2.4.3-4
+- test(integration): podman-strict-forward-ports: expect fail with netavark
+
+* Fri Jun 31 2026 Eric Garver <egarver@redhat.com> - 2.4.3-3
+- fix(firewall-cmd): handle no options when not running
+
 * Fri Jun 26 2026 Eric Garver <egarver@redhat.com> - 2.4.3-2
 - rebuild to bump NVR; no changes
 
