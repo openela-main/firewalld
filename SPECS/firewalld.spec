@@ -1,7 +1,7 @@
 Summary: A firewall daemon with D-Bus interface providing a dynamic firewall
 Name: firewalld
 Version: 1.3.4
-Release: 19%{?dist}
+Release: 20%{?dist}
 URL:     http://www.firewalld.org
 License: GPLv2+
 Source0: https://github.com/firewalld/firewalld/releases/download/v%{version}/firewalld-%{version}.tar.bz2
@@ -74,6 +74,7 @@ Patch66: 0066-v2.5.0-chore-fw_policy-support-timeouts.patch
 Patch67: 0067-v2.5.0-fix-policy-support-timeouts.patch
 Patch68: 0068-v2.5.0-fix-cli-policy-allow-timeout-with-ingress-zon.patch
 Patch69: 0069-v2.5.0-test-policy-verify-timeout-works.patch
+Patch70: 0070-v2.5.0-fix-policy-use-PK_ACTION_CONFIG-for-set-ZoneSettings.patch
 BuildArch: noarch
 BuildRequires: autoconf
 BuildRequires: automake
@@ -297,6 +298,9 @@ rm -rf %{buildroot}%{_datadir}/firewalld/testsuite
 %{_mandir}/man1/firewall-config*.1*
 
 %changelog
+* Wed Jul 26 2026 Eric Garver <egarver@redhat.com> - 1.3.4-20
+- fix(policy): use PK_ACTION_CONFIG for set{ZoneSettings2,PolicySettings} (CVE-2026-4948)
+
 * Fri Jul 10 2026 Eric Garver <egarver@redhat.com> - 1.3.4-19
 - fix(zone): forward: support timeout
 - fix(policy): support timeouts
