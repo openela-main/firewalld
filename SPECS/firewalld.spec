@@ -1,7 +1,7 @@
 Summary: A firewall daemon with D-Bus interface providing a dynamic firewall
 Name: firewalld
 Version: 0.9.11
-Release: 12%{?dist}
+Release: 13%{?dist}
 URL:     http://www.firewalld.org
 License: GPLv2+
 Source0: https://github.com/firewalld/firewalld/releases/download/v%{version}/firewalld-%{version}.tar.gz
@@ -42,6 +42,7 @@ Patch34: 0034-v2.4.0-chore-nftables-simplify-icmp-match-fragments.patch
 Patch35: 0035-v2.4.0-chore-nftables-move-_icmp_types_fragments-ins.patch
 Patch36: 0036-v2.4.0-chore-ipXtables-simplify-icmp-match-fragments.patch
 Patch37: 0037-v2.4.0-fix-policy-allow-host-ipv6-allow-MLD-packets.patch
+Patch38: 0038-v2.5.0-fix-policy-use-PK_ACTION_CONFIG-for-set-ZoneS.patch
 
 BuildArch: noarch
 BuildRequires: autoconf
@@ -243,6 +244,9 @@ desktop-file-install --delete-original \
 %{_mandir}/man1/firewall-config*.1*
 
 %changelog
+* Thu Aug 20 2026 Eric Garver <egarver@redhat.com> - 0.9.11-13
+- fix(policy): use PK_ACTION_CONFIG for set{ZoneSettings2,PolicySettings}
+
 * Tue Jul 28 2026 Eric Garver <egarver@redhat.com> - 0.9.11-12
 - bump NVR
 

@@ -1,0 +1,37 @@
+From c8203ab631007126f6f50f2c424db48c662b0711 Mon Sep 17 00:00:00 2001
+From: Sizhe Zhao <prc.zhao@outlook.com>
+Date: Tue, 31 Mar 2026 20:46:50 +0800
+Subject: [PATCH] v2.5.0: fix(policy): use PK_ACTION_CONFIG for
+ set{ZoneSettings2,PolicySettings}
+
+Reference: https://access.redhat.com/security/cve/cve-2026-4948
+(cherry picked from commit 5fb3914ad830feff6cb2b0670457c60a323c6c6c)
+---
+ src/firewall/server/firewalld.py | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/firewall/server/firewalld.py b/src/firewall/server/firewalld.py
+index f74e6e6ae6ff..da7fc1ca6965 100644
+--- a/src/firewall/server/firewalld.py
++++ b/src/firewall/server/firewalld.py
+@@ -925,7 +925,7 @@ class FirewallD(slip.dbus.service.Object):
+         log.debug1("getZoneSettings2(%s)", zone)
+         return self.fw.zone.get_config_with_settings_dict(zone)
+ 
+-    @slip.dbus.polkit.require_auth(config.dbus.PK_ACTION_CONFIG_INFO)
++    @slip.dbus.polkit.require_auth(config.dbus.PK_ACTION_CONFIG)
+     @dbus_service_method(config.dbus.DBUS_INTERFACE_ZONE, in_signature='sa{sv}')
+     @dbus_handle_exceptions
+     def setZoneSettings2(self, zone, settings, sender=None):
+@@ -949,7 +949,7 @@ class FirewallD(slip.dbus.service.Object):
+         log.debug1("policy.getPolicySettings(%s)", policy)
+         return self.fw.policy.get_config_with_settings_dict(policy)
+ 
+-    @slip.dbus.polkit.require_auth(config.dbus.PK_ACTION_CONFIG_INFO)
++    @slip.dbus.polkit.require_auth(config.dbus.PK_ACTION_CONFIG)
+     @dbus_service_method(config.dbus.DBUS_INTERFACE_POLICY, in_signature='sa{sv}')
+     @dbus_handle_exceptions
+     def setPolicySettings(self, policy, settings, sender=None):
+-- 
+2.53.0
+
